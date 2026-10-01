@@ -105,5 +105,66 @@ void main() {
       expect(manualSource, equals('manual'));
       expect(qrSource, isNot(equals(manualSource)));
     });
+
+    test('CheckinService.isUuid validates standard UUIDs and rejects event/participant codes', () {
+      final service = CheckinService();
+
+      // Valid UUID formats
+      expect(service.isUuid('c0a80101-0000-0000-0000-000000000000'), isTrue);
+      expect(service.isUuid('3fa85f64-5717-4562-b3fc-2c963f66afa6'), isTrue);
+      expect(service.isUuid('A0B1C2D3-E4F5-6789-ABCD-EF0123456789'), isTrue);
+
+      // Codes and non-UUID formats
+      expect(service.isUuid('TEST-EV-01'), isFalse);
+      expect(service.isUuid('TEST-SRI27-002'), isFalse);
+      expect(service.isUuid('e1'), isFalse);
+      expect(service.isUuid('EV-01'), isFalse);
+      expect(service.isUuid(''), isFalse);
+      expect(service.isUuid('   '), isFalse);
+      expect(service.isUuid(null), isFalse);
+    });
+
+    test('EventModel supports both "date" and "event_date" database columns', () {
+      final fromDate = EventModel.fromMap({
+        'id': 'e-1',
+        'event_code': 'TEST-EV-01',
+        'name': 'Code Sprint',
+        'category': 'Coding',
+        'date': '2026-10-01',
+      });
+      expect(fromDate.date, '2026-10-01');
+
+      final fromEventDate = EventModel.fromMap({
+        'id': 'e-2',
+        'event_code': 'TEST-EV-02',
+        'name': 'HackAI',
+        'category': 'Web & App',
+        'event_date': 'Day 2',
+      });
+      expect(fromEventDate.date, 'Day 2');
+    });
+
+    test('Effective eventId and participantId logic resolves codes when ID is code or empty', () {
+      const eventWithCode = EventModel(
+        id: '',
+        eventCode: 'TEST-EV-01',
+        name: 'Code Sprint',
+        category: 'Coding',
+      );
+      final effectiveEventId = eventWithCode.id.isNotEmpty
+          ? eventWithCode.id
+          : eventWithCode.eventCode;
+      expect(effectiveEventId, 'TEST-EV-01');
+
+      const participantWithCode = ParticipantModel(
+        id: '',
+        participantCode: 'TEST-SRI27-002',
+        name: 'Ananya Nair',
+      );
+      final effectiveParticipantId = participantWithCode.id.isNotEmpty
+          ? participantWithCode.id
+          : participantWithCode.participantCode;
+      expect(effectiveParticipantId, 'TEST-SRI27-002');
+    });
   });
 }

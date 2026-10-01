@@ -136,12 +136,13 @@ class EventDetailSheet extends StatelessWidget {
           // Primary Action: Scan Event Attendance
           GradientButton(
             onPressed: () {
+              final effectiveEventId = event.id.isNotEmpty ? event.id : event.eventCode;
               Navigator.of(context).pop();
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) => ScanScreen(
                     mode: AttendanceMode.event,
-                    eventId: event.id,
+                    eventId: effectiveEventId,
                     eventName: event.name,
                     onScanComplete: onAttendanceMarked,
                   ),
@@ -165,12 +166,13 @@ class EventDetailSheet extends StatelessWidget {
               ),
             ),
             onPressed: () {
+              final effectiveEventId = event.id.isNotEmpty ? event.id : event.eventCode;
               Navigator.of(context).pop();
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) => ParticipantSearchScreen(
                     mode: AttendanceMode.event,
-                    eventId: event.id,
+                    eventId: effectiveEventId,
                     eventName: event.name,
                   ),
                 ),

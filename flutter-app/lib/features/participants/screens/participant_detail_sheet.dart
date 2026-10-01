@@ -83,8 +83,12 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
     setState(() => _isLoadingInitialState = true);
 
     try {
+      final effectiveParticipantId = _participant.id.isNotEmpty
+          ? _participant.id
+          : _participant.participantCode;
+
       // 1. Check arrival check-in status
-      final arrivalData = await _checkinService.getArrivalCheckin(_participant.id);
+      final arrivalData = await _checkinService.getArrivalCheckin(effectiveParticipantId);
       _hasArrived = arrivalData != null;
       if (arrivalData != null && arrivalData['checked_in_at'] != null) {
         _arrivedAt = DateTime.tryParse(arrivalData['checked_in_at'].toString());
@@ -93,14 +97,14 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
       if (widget.mode == AttendanceMode.event && widget.eventId != null) {
         // 2. Check if registered for this event
         final regData = await _checkinService.getRegistration(
-          participantId: _participant.id,
+          participantId: effectiveParticipantId,
           eventId: widget.eventId!,
         );
         _isRegisteredForEvent = regData != null;
 
         // 3. Check if already attended this event
         final attendanceData = await _checkinService.getEventAttendance(
-          participantId: _participant.id,
+          participantId: effectiveParticipantId,
           eventId: widget.eventId!,
         );
         _hasAttendedEvent = attendanceData != null;
@@ -128,8 +132,11 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
 
     try {
       final volunteerId = await _checkinService.getVolunteerId();
+      final effectiveParticipantId = _participant.id.isNotEmpty
+          ? _participant.id
+          : _participant.participantCode;
       final result = await _checkinService.recordArrivalCheckin(
-        participantId: _participant.id,
+        participantId: effectiveParticipantId,
         checkedInByVolunteerId: volunteerId,
         source: widget.source,
       );
@@ -177,8 +184,11 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
 
     try {
       final volunteerId = await _checkinService.getVolunteerId();
+      final effectiveParticipantId = _participant.id.isNotEmpty
+          ? _participant.id
+          : _participant.participantCode;
       final result = await _checkinService.recordEventAttendance(
-        participantId: _participant.id,
+        participantId: effectiveParticipantId,
         eventId: widget.eventId!,
         markedByVolunteerId: volunteerId,
         source: widget.source,

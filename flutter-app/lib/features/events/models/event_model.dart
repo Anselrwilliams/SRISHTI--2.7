@@ -31,7 +31,7 @@ class EventModel {
       name: map['name']?.toString() ?? 'Event',
       category: map['category']?.toString() ?? 'General',
       venue: map['venue']?.toString() ?? 'Main Campus',
-      date: map['event_date']?.toString() ?? 'Day 1',
+      date: map['date']?.toString() ?? map['event_date']?.toString() ?? 'Day 1',
       time: map['start_time']?.toString() ?? '10:00 AM',
       registrationCount: int.tryParse(map['registrations_count']?.toString() ?? '0') ?? 0,
       attendanceCount: int.tryParse(map['attendance_count']?.toString() ?? '0') ?? 0,

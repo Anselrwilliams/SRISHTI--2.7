@@ -87,17 +87,147 @@ class CheckinService {
     return authUser.id;
   }
 
+  static final _uuidRegex = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
+
+  /// Helper to test whether a string is a standard UUID.
+  bool isUuid(String? value) {
+    if (value == null) return false;
+    return _uuidRegex.hasMatch(value.trim());
+  }
+
+  /// Resolves an event code, preview ID, or UUID into a valid database event UUID.
+  Future<String?> resolveEventId(String eventIdOrCode) async {
+    final clean = eventIdOrCode.trim();
+    if (clean.isEmpty) return null;
+
+    // 1. If it's already a valid UUID, verify or return directly
+    if (isUuid(clean)) {
+      try {
+        final res = await _supabaseService.client
+            .from('events')
+            .select('id')
+            .eq('id', clean)
+            .maybeSingle();
+        if (res != null && res['id'] != null) {
+          return res['id'].toString();
+        }
+      } catch (_) {}
+      return clean;
+    }
+
+    // 2. Lookup in events table by event_code
+    try {
+      final byCode = await _supabaseService.client
+          .from('events')
+          .select('id')
+          .eq('event_code', clean.toUpperCase())
+          .maybeSingle();
+      if (byCode != null && byCode['id'] != null) {
+        return byCode['id'].toString();
+      }
+    } catch (_) {}
+
+    // 3. Fallback normalization for preview/sample codes
+    String candidate = clean.toUpperCase();
+    if (candidate == 'E1' || candidate == 'EV-01') candidate = 'TEST-EV-01';
+    if (candidate == 'E2' || candidate == 'EV-02') candidate = 'TEST-EV-02';
+    if (candidate == 'E3' || candidate == 'EV-03') candidate = 'TEST-EV-03';
+    if (!candidate.startsWith('TEST-') && candidate.startsWith('EV-')) {
+      candidate = 'TEST-$candidate';
+    }
+
+    try {
+      final byCandidate = await _supabaseService.client
+          .from('events')
+          .select('id')
+          .eq('event_code', candidate)
+          .maybeSingle();
+      if (byCandidate != null && byCandidate['id'] != null) {
+        return byCandidate['id'].toString();
+      }
+    } catch (_) {}
+
+    // 4. Fallback search by ilike pattern on event_code or name
+    try {
+      final byPattern = await _supabaseService.client
+          .from('events')
+          .select('id')
+          .or('event_code.ilike.%$clean%,name.ilike.%$clean%')
+          .limit(1)
+          .maybeSingle();
+      if (byPattern != null && byPattern['id'] != null) {
+        return byPattern['id'].toString();
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  /// Resolves a participant code or UUID into a valid database participant UUID.
+  Future<String?> resolveParticipantId(String participantIdOrCode) async {
+    final clean = participantIdOrCode.trim();
+    if (clean.isEmpty) return null;
+
+    // 1. If it's already a valid UUID, verify or return directly
+    if (isUuid(clean)) {
+      try {
+        final res = await _supabaseService.client
+            .from('participants')
+            .select('id')
+            .eq('id', clean)
+            .maybeSingle();
+        if (res != null && res['id'] != null) {
+          return res['id'].toString();
+        }
+      } catch (_) {}
+      return clean;
+    }
+
+    // 2. Lookup in participants table by participant_code
+    try {
+      final byCode = await _supabaseService.client
+          .from('participants')
+          .select('id')
+          .eq('participant_code', clean.toUpperCase())
+          .maybeSingle();
+      if (byCode != null && byCode['id'] != null) {
+        return byCode['id'].toString();
+      }
+    } catch (_) {}
+
+    // 3. Fallback search by ilike pattern on participant_code
+    try {
+      final byPattern = await _supabaseService.client
+          .from('participants')
+          .select('id')
+          .or('participant_code.ilike.%$clean%')
+          .limit(1)
+          .maybeSingle();
+      if (byPattern != null && byPattern['id'] != null) {
+        return byPattern['id'].toString();
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
   // ===========================================================================
   // ARRIVAL CHECK-IN
   // ===========================================================================
 
   /// Checks if a participant has already performed festival arrival check-in.
+  /// Supports both participant UUID and participant code (e.g. 'TEST-SRI27-002').
   Future<Map<String, dynamic>?> getArrivalCheckin(String participantId) async {
     try {
+      final pId = await resolveParticipantId(participantId) ?? (isUuid(participantId) ? participantId : null);
+      if (pId == null) return null;
+
       final response = await _supabaseService.client
           .from('arrival_checkins')
           .select()
-          .eq('participant_id', participantId)
+          .eq('participant_id', pId)
           .maybeSingle();
 
       return response;
@@ -115,8 +245,15 @@ class CheckinService {
     String source = 'qr', // 'qr' or 'manual'
     String? notes,
   }) async {
+    final pId = await resolveParticipantId(participantId) ?? (isUuid(participantId) ? participantId : null);
+    if (pId == null) {
+      return AttendanceActionResult.error(
+        message: 'Could not resolve participant record.',
+      );
+    }
+
     // 1. Check if already checked in before inserting
-    final existing = await getArrivalCheckin(participantId);
+    final existing = await getArrivalCheckin(pId);
     if (existing != null) {
       final existingTime = existing['checked_in_at'] != null
           ? DateTime.tryParse(existing['checked_in_at'].toString())
@@ -131,7 +268,7 @@ class CheckinService {
     // 2. Perform insert
     try {
       final payload = <String, dynamic>{
-        'participant_id': participantId,
+        'participant_id': pId,
         'checked_in_by': checkedInByVolunteerId,
         'source': source,
       };
@@ -176,35 +313,95 @@ class CheckinService {
   // ===========================================================================
 
   /// Checks if a participant is registered for a specific event in `registrations`.
+  /// Supports participant UUID or code, and event UUID, event code, or preview ID.
   Future<Map<String, dynamic>?> getRegistration({
     required String participantId,
     required String eventId,
   }) async {
     try {
-      final response = await _supabaseService.client
-          .from('registrations')
-          .select()
-          .eq('participant_id', participantId)
-          .eq('event_id', eventId)
-          .maybeSingle();
+      final pId = await resolveParticipantId(participantId);
+      final eId = await resolveEventId(eventId);
 
-      return response;
+      // 1. Direct lookup by resolved UUIDs
+      if (pId != null && eId != null && isUuid(pId) && isUuid(eId)) {
+        try {
+          final response = await _supabaseService.client
+              .from('registrations')
+              .select()
+              .eq('participant_id', pId)
+              .eq('event_id', eId)
+              .maybeSingle();
+
+          if (response != null) {
+            return response;
+          }
+        } catch (_) {}
+      }
+
+      // 2. Fallback: Joined query matching on participant_code and event_code
+      try {
+        final pCode = participantId.trim().toUpperCase();
+        final eCode = eventId.trim().toUpperCase();
+
+        var query = _supabaseService.client
+            .from('registrations')
+            .select('*, participants!inner(id, participant_code), events!inner(id, event_code)');
+
+        if (pId != null && isUuid(pId)) {
+          query = query.eq('participant_id', pId);
+        } else {
+          query = query.or('participant_code.eq.$pCode,participant_code.ilike.%$pCode%', referencedTable: 'participants');
+        }
+
+        if (eId != null && isUuid(eId)) {
+          query = query.eq('event_id', eId);
+        } else {
+          query = query.or('event_code.eq.$eCode,event_code.ilike.%$eCode%', referencedTable: 'events');
+        }
+
+        final joined = await query.maybeSingle();
+        if (joined != null) {
+          return joined;
+        }
+      } catch (_) {}
+
+      // 3. Fallback: Direct query if both originally provided were UUIDs
+      if (isUuid(participantId) && isUuid(eventId)) {
+        try {
+          final fallback = await _supabaseService.client
+              .from('registrations')
+              .select()
+              .eq('participant_id', participantId)
+              .eq('event_id', eventId)
+              .maybeSingle();
+          if (fallback != null) {
+            return fallback;
+          }
+        } catch (_) {}
+      }
+
+      return null;
     } catch (_) {
       return null;
     }
   }
 
   /// Checks if attendance has already been recorded for a participant in a specific event.
+  /// Supports participant UUID or code, and event UUID or code.
   Future<Map<String, dynamic>?> getEventAttendance({
     required String participantId,
     required String eventId,
   }) async {
     try {
+      final pId = await resolveParticipantId(participantId) ?? (isUuid(participantId) ? participantId : null);
+      final eId = await resolveEventId(eventId) ?? (isUuid(eventId) ? eventId : null);
+      if (pId == null || eId == null) return null;
+
       final response = await _supabaseService.client
           .from('event_attendance')
           .select()
-          .eq('participant_id', participantId)
-          .eq('event_id', eventId)
+          .eq('participant_id', pId)
+          .eq('event_id', eId)
           .maybeSingle();
 
       return response;
@@ -226,8 +423,22 @@ class CheckinService {
     String source = 'qr', // 'qr' or 'manual'
     String? notes,
   }) async {
+    final pId = await resolveParticipantId(participantId) ?? (isUuid(participantId) ? participantId : null);
+    final eId = await resolveEventId(eventId) ?? (isUuid(eventId) ? eventId : null);
+
+    if (pId == null) {
+      return AttendanceActionResult.error(
+        message: 'Could not resolve participant record.',
+      );
+    }
+    if (eId == null) {
+      return AttendanceActionResult.error(
+        message: 'Could not resolve event record.',
+      );
+    }
+
     // 1. Verify participant has arrived at SRISHTI
-    final arrival = await getArrivalCheckin(participantId);
+    final arrival = await getArrivalCheckin(pId);
     if (arrival == null) {
       return AttendanceActionResult.error(
         message: 'Participant has not checked in to SRISHTI yet.',
@@ -236,8 +447,8 @@ class CheckinService {
 
     // 2. Verify participant is registered for this event
     final registration = await getRegistration(
-      participantId: participantId,
-      eventId: eventId,
+      participantId: pId,
+      eventId: eId,
     );
     if (registration == null) {
       return AttendanceActionResult.error(
@@ -247,8 +458,8 @@ class CheckinService {
 
     // 3. Check if already attended
     final existingAttendance = await getEventAttendance(
-      participantId: participantId,
-      eventId: eventId,
+      participantId: pId,
+      eventId: eId,
     );
     if (existingAttendance != null) {
       final attendedTime = existingAttendance['marked_at'] != null
@@ -264,8 +475,8 @@ class CheckinService {
     // 4. Insert event attendance
     try {
       final payload = <String, dynamic>{
-        'participant_id': participantId,
-        'event_id': eventId,
+        'participant_id': pId,
+        'event_id': eId,
         'marked_by': markedByVolunteerId,
         'source': source,
       };

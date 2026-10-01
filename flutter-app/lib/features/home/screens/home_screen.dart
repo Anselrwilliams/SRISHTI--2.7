@@ -323,8 +323,8 @@ class _HomeScreenState extends State<HomeScreen>
 
                 EventCard(
                   event: const EventModel(
-                    id: 'e1',
-                    eventCode: 'EV-01',
+                    id: 'TEST-EV-01',
+                    eventCode: 'TEST-EV-01',
                     name: 'Code Sprint (Speed Coding)',
                     category: 'Coding',
                     venue: 'CS Lab 3',
@@ -338,8 +338,8 @@ class _HomeScreenState extends State<HomeScreen>
                     EventDetailSheet.show(
                       context,
                       event: const EventModel(
-                        id: 'e1',
-                        eventCode: 'EV-01',
+                        id: 'TEST-EV-01',
+                        eventCode: 'TEST-EV-01',
                         name: 'Code Sprint (Speed Coding)',
                         category: 'Coding',
                         venue: 'CS Lab 3',
