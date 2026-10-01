@@ -1,0 +1,20 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+.idea/
+.vscode/
+
+# Android / iOS
+flutter-app/android/.gradle/
+flutter-app/android/local.properties
+flutter-app/ios/Pods/
+
+# Secrets (uncomment if your keys are in this file)
+# flutter-app/lib/core/constants/supabase_config.dart
+.env
+*.jks
+*.keystore
