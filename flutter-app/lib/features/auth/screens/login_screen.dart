@@ -226,7 +226,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                         // Header: Title & Supporting Text
                         const Text(
-                          'Welcome Back!',
+                          'SRISHTI 2.7',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 28,
@@ -238,7 +238,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 8),
 
                         const Text(
-                          'Sign in to continue to SRISHTI 2.7',
+                          'Sign in to continue',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 14,

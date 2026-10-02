@@ -31,8 +31,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Heading & Subtitle
-      expect(find.text('Welcome Back!'), findsOneWidget);
-      expect(find.text('Sign in to continue to SRISHTI 2.7'), findsOneWidget);
+      expect(find.text('SRISHTI 2.7'), findsOneWidget);
+      expect(find.text('Sign in to continue'), findsOneWidget);
 
       // Logo Asset
       final imageFinder = find.byType(Image);
@@ -184,7 +184,7 @@ void main() {
 
       // We should be back on Open Login screen
       expect(find.text('Open Login'), findsOneWidget);
-      expect(find.text('Welcome Back!'), findsNothing);
+      expect(find.text('Sign in to continue'), findsNothing);
     });
   });
 }
