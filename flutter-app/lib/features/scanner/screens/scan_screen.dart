@@ -7,6 +7,7 @@ import '../../participants/models/participant_model.dart';
 import '../../participants/screens/participant_detail_sheet.dart';
 import '../../participants/screens/participant_search_screen.dart';
 import '../../participants/services/participant_service.dart';
+import '../../../core/navigation/route_observer.dart';
 import '../services/qr_camera_manager.dart';
 import '../widgets/scan_overlay.dart';
 
@@ -26,6 +27,7 @@ class ScanScreen extends StatefulWidget {
   final String? eventName;
   final VoidCallback? onScanComplete;
   final bool isActive;
+  final VoidCallback? onBackPressed;
 
   const ScanScreen({
     super.key,
@@ -34,6 +36,7 @@ class ScanScreen extends StatefulWidget {
     this.eventName,
     this.onScanComplete,
     this.isActive = true,
+    this.onBackPressed,
   });
 
   /// Explicitly resumes or starts scanning on any active [ScanScreen] instance.
@@ -50,7 +53,7 @@ class ScanScreen extends StatefulWidget {
   State<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
+class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver, RouteAware {
   static final Set<_ScanScreenState> _registeredStates = {};
 
   static void resumeActiveScanner() {
@@ -93,6 +96,35 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final modalRoute = ModalRoute.of(context);
+    if (modalRoute is PageRoute) {
+      appRouteObserver.subscribe(this, modalRoute);
+    }
+  }
+
+  @override
+  void didPushNext() {
+    // Another route was pushed on top of ScanScreen (e.g. participant details or search)
+    _stopCamera();
+  }
+
+  @override
+  void didPopNext() {
+    // Covered route was popped, returning to ScanScreen
+    if (widget.isActive && !_hasScannedOnce) {
+      _startCamera();
+    }
+  }
+
+  @override
+  void didPop() {
+    // ScanScreen route itself was popped
+    _disposeCamera();
+  }
+
+  @override
   void didUpdateWidget(ScanScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isActive != oldWidget.isActive) {
@@ -106,27 +138,36 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state != AppLifecycleState.resumed) {
       if (_isCameraRunning) {
         _stopCamera();
       }
+    } else if (state == AppLifecycleState.resumed && widget.isActive && !_hasScannedOnce) {
+      _startCamera();
     }
   }
 
   @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
     _registeredStates.remove(this);
     WidgetsBinding.instance.removeObserver(this);
     _isCameraRunning = false;
-    _scannerController = null;
     _isTorchOn = false;
+    final controller = _scannerController;
+    _scannerController = null;
+    controller?.stop();
+    controller?.dispose();
     QrCameraManager.instance.stopAndDispose();
     super.dispose();
   }
 
   Future<void> _startCamera() async {
     if (!mounted || !widget.isActive || _isStartingCamera) return;
-    setState(() => _isStartingCamera = true);
+    setState(() {
+      _isStartingCamera = true;
+      _hasScannedOnce = false;
+    });
 
     try {
       _isTorchOn = false;
@@ -434,7 +475,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                       ? 'Camera paused to save battery. Tap below to scan the next participant.'
                       : (isEventMode
                           ? 'Tap below to activate the camera for event attendance.'
-                          : 'Tap below to activate the camera for festival arrival.'),
+                          : 'Tap below to activate the camera for FEST arrival.'),
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: AppColors.textDarkSecondary,
@@ -512,95 +553,119 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
 
     final isEventMode = widget.mode == AttendanceMode.event;
 
-    return Scaffold(
-      backgroundColor: AppColors.surfaceDark,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Camera Preview or Standby View
-          if (_isCameraRunning && _scannerController != null)
-            MobileScanner(
-              controller: _scannerController!,
-              onDetect: _handleBarcodeDetected,
-              errorBuilder: (context, error) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(28.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.videocam_off_outlined,
-                          size: 56,
-                          color: AppColors.textDarkSecondary,
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Camera Unavailable',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Please ensure camera permissions are granted in settings.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          _disposeCamera();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.surfaceDark,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Camera Preview or Standby View
+            if (_isCameraRunning && _scannerController != null)
+              MobileScanner(
+                controller: _scannerController!,
+                onDetect: _handleBarcodeDetected,
+                errorBuilder: (context, error) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(28.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.videocam_off_outlined,
+                            size: 56,
                             color: AppColors.textDarkSecondary,
-                            fontSize: 14,
                           ),
-                        ),
-                        const SizedBox(height: 24),
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.cyan,
-                            side: const BorderSide(color: AppColors.cyan),
-                          ),
-                          onPressed: _startCamera,
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('Retry Camera'),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            )
-          else
-            _buildCameraStoppedView(isEventMode),
-
-          // Cyber-Minimalist Frame & Laser Overlay (active while camera is streaming)
-          if (_isCameraRunning && _scannerController != null)
-            const Center(
-              child: ScanOverlay(scanAreaSize: 260),
-            ),
-
-          // Top Header Bar
-          SafeArea(
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // Back button if pushed modally (e.g. from Events Screen or Admin Dashboard)
-                        if (Navigator.of(context).canPop())
-                          IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.black.withAlpha(160),
-                              side: const BorderSide(color: AppColors.borderDarkSubtle),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Camera Unavailable',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
                             ),
-                            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
-                            onPressed: () => Navigator.of(context).pop(),
-                          )
-                        else
-                          const SizedBox(width: 8),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Please ensure camera permissions are granted in settings.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: AppColors.textDarkSecondary,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.cyan,
+                              side: const BorderSide(color: AppColors.cyan),
+                            ),
+                            onPressed: _startCamera,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Retry Camera'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              )
+            else
+              _buildCameraStoppedView(isEventMode),
+
+            // Cyber-Minimalist Frame & Laser Overlay (active while camera is streaming)
+            if (_isCameraRunning && _scannerController != null)
+              const Center(
+                child: ScanOverlay(scanAreaSize: 260),
+              ),
+
+            // Top Header Bar
+            SafeArea(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // Back button if pushed modally or if custom onBackPressed provided
+                          if (Navigator.of(context).canPop())
+                            IconButton(
+                              key: const Key('scan_top_back_button'),
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.black.withAlpha(160),
+                                side: const BorderSide(color: AppColors.borderDarkSubtle),
+                              ),
+                              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+                              onPressed: () {
+                                _disposeCamera();
+                                Navigator.of(context).pop();
+                              },
+                            )
+                          else if (widget.onBackPressed != null)
+                            IconButton(
+                              key: const Key('scan_top_back_button'),
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.black.withAlpha(160),
+                                side: const BorderSide(color: AppColors.borderDarkSubtle),
+                              ),
+                              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+                              onPressed: () {
+                                _disposeCamera();
+                                widget.onBackPressed?.call();
+                              },
+                            )
+                          else
+                            const SizedBox(width: 8),
 
                         // Mode Indicator Badge
                         Container(
@@ -624,7 +689,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                isEventMode ? 'EVENT ATTENDANCE' : 'FESTIVAL ARRIVAL',
+                                isEventMode ? 'EVENT ATTENDANCE' : 'FEST ARRIVAL',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 12,
@@ -771,7 +836,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                                 Text(
                                   isEventMode
                                       ? 'Verifies arrival & event registration'
-                                      : 'Records arrival at SRISHTI festival gate',
+                                      : 'Records arrival at SRISHTI FEST gate',
                                   style: const TextStyle(
                                     color: AppColors.textDarkSecondary,
                                     fontSize: 11,
@@ -811,6 +876,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
+    ),
     );
   }
 }

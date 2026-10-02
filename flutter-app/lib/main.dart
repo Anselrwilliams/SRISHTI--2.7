@@ -11,6 +11,7 @@ import 'features/auth/screens/login_screen.dart';
 import 'features/dashboard/screens/dashboard_screen.dart';
 import 'features/event_staff/screens/event_staff_dashboard_screen.dart';
 import 'features/registration/screens/registration_dashboard_screen.dart';
+import 'core/navigation/route_observer.dart';
 import 'features/scanner/services/qr_camera_manager.dart';
 
 Future<void> main() async {
@@ -36,6 +37,7 @@ class SrishtiVolunteerApp extends StatelessWidget {
       title: 'SRISHTI 2.7 Volunteer',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      navigatorObservers: [appRouteObserver],
       home: SupabaseConfig.isConfigured &&
               SupabaseService.instance.isInitialized
           ? const AuthGate()

@@ -145,7 +145,7 @@ class _EventsScreenState extends State<EventsScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Festival Events'),
+        title: const Text('FEST Events'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -210,7 +210,7 @@ class _EventsScreenState extends State<EventsScreen> {
                         description: 'Select another filter or check back later.',
                       )
                     : ListView.separated(
-                        padding: const EdgeInsets.all(16.0),
+                        padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 100.0),
                         itemCount: filteredEvents.length,
                         separatorBuilder: (context, index) => const SizedBox(height: 14),
                         itemBuilder: (context, index) {

@@ -15,43 +15,80 @@ class EventCard extends StatelessWidget {
     this.onTap,
   });
 
+  Color _getCategoryColor(String category) {
+    final cat = category.toLowerCase();
+    if (cat.contains('code') || cat.contains('robot') || cat.contains('web') || cat.contains('workshop') || cat.contains('tech')) {
+      return AppColors.cyan;
+    } else if (cat.contains('cultur') || cat.contains('art') || cat.contains('music') || cat.contains('dance')) {
+      return const Color(0xFF8B5CF6);
+    } else if (cat.contains('fun') || cat.contains('game') || cat.contains('gaming')) {
+      return const Color(0xFFF59E0B);
+    }
+    return AppColors.blue;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final categoryColor = _getCategoryColor(event.category);
+
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border, width: 1),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.borderLight, width: 1.2),
         boxShadow: AppColors.softShadow,
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(22),
           child: Padding(
-            padding: const EdgeInsets.all(18.0),
+            padding: const EdgeInsets.all(20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: AppColors.cyan.withAlpha(25),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        event.category.toUpperCase(),
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.electricBlue,
-                          letterSpacing: 0.5,
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: categoryColor.withAlpha(25),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            event.category.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w800,
+                              color: categoryColor,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
                         ),
-                      ),
+                        if (event.eventCode.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.backgroundSecondary,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              event.eventCode,
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     AppStatusBadge(
                       label: event.status,
@@ -67,32 +104,34 @@ class EventCard extends StatelessWidget {
                 Text(
                   event.name,
                   style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
                     letterSpacing: -0.3,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Row(
                   children: [
-                    const Icon(Icons.schedule_rounded, size: 14, color: AppColors.textSecondary),
+                    const Icon(Icons.schedule_rounded, size: 15, color: AppColors.textSecondary),
                     const SizedBox(width: 4),
                     Text(
                       '${event.date ?? "Day 1"} • ${TimeFormatter.formatTimeOrRange(event.time).isNotEmpty ? TimeFormatter.formatTimeOrRange(event.time) : (event.time ?? "10:00 AM")}',
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
                         color: AppColors.textSecondary,
                       ),
                     ),
                     const SizedBox(width: 14),
-                    const Icon(Icons.place_outlined, size: 14, color: AppColors.textSecondary),
+                    const Icon(Icons.location_on_outlined, size: 15, color: AppColors.textSecondary),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
                         event.venue ?? 'Main Campus',
                         style: const TextStyle(
-                          fontSize: 12,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
                           color: AppColors.textSecondary,
                         ),
                         maxLines: 1,
@@ -101,12 +140,12 @@ class EventCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: AppColors.backgroundSecondary,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -114,44 +153,48 @@ class EventCard extends StatelessWidget {
                       Column(
                         children: [
                           const Text(
-                            'Registrations',
+                            'REGISTRATIONS',
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
                               color: AppColors.textSecondary,
+                              letterSpacing: 0.5,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             '${event.registrationCount}',
                             style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
                               color: AppColors.textPrimary,
                             ),
                           ),
                         ],
                       ),
                       Container(
-                        height: 24,
+                        height: 22,
                         width: 1,
-                        color: AppColors.border,
+                        color: AppColors.borderLight,
                       ),
                       Column(
                         children: [
                           const Text(
-                            'Present',
+                            'PRESENT',
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
                               color: AppColors.textSecondary,
+                              letterSpacing: 0.5,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             '${event.attendanceCount}',
                             style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.electricBlue,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.blue,
                             ),
                           ),
                         ],

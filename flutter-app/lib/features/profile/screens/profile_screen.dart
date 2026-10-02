@@ -146,7 +146,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: const Text('Profile'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 100.0),
         child: Column(
           children: [
             // Avatar & Identity Card
@@ -155,7 +155,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               decoration: BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: AppColors.borderLight, width: 1.2),
                 boxShadow: AppColors.softShadow,
               ),
               child: Column(
@@ -168,7 +168,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
-                        colors: [roleColor, AppColors.electricBlue],
+                        colors: [roleColor, AppColors.cyan],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -246,8 +246,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               decoration: BoxDecoration(
                 color: AppColors.surface,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: AppColors.borderLight, width: 1.2),
                 boxShadow: AppColors.softShadow,
               ),
               child: Row(
@@ -267,8 +267,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Container(
               decoration: BoxDecoration(
                 color: AppColors.surface,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: AppColors.borderLight, width: 1.2),
                 boxShadow: AppColors.softShadow,
               ),
               child: Material(

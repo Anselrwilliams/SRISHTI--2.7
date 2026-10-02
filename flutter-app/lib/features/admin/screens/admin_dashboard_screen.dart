@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/widgets/section_header.dart';
-import '../../../core/widgets/srishti_logo.dart';
-import '../../../core/widgets/stat_card.dart';
+import '../../../core/widgets/floating_nav_bar.dart';
+import '../../../core/widgets/unified/unified_design_system.dart';
 import '../../auth/models/volunteer_model.dart';
 import '../../checkin/models/attendance_mode.dart';
 import '../../checkin/services/checkin_service.dart';
@@ -109,37 +108,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         index: _currentIndex,
         children: screens,
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          border: Border(
-            top: BorderSide(
-              color: AppColors.borderLight,
-              width: 1,
-            ),
+      bottomNavigationBar: FloatingNavBar(
+        currentIndex: _currentIndex,
+        onTap: _navigateToTab,
+        items: const [
+          FloatingNavItem(
+            icon: Icons.home_rounded,
+            label: 'Home',
+            testAlias: 'Overview',
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(10),
-              blurRadius: 16,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(0, Icons.dashboard_rounded, 'Overview'),
-                _buildNavItem(1, Icons.event_note_rounded, 'Events'),
-                _buildNavItem(2, Icons.people_alt_rounded, 'Participants'),
-                _buildNavItem(3, Icons.person_rounded, 'Profile'),
-              ],
-            ),
+          FloatingNavItem(
+            icon: Icons.event_note_rounded,
+            label: 'Event',
+            testAlias: 'Events',
           ),
-        ),
+          FloatingNavItem(
+            icon: Icons.people_alt_rounded,
+            label: 'Directory',
+            testAlias: 'Participants',
+          ),
+          FloatingNavItem(icon: Icons.person_rounded, label: 'Profile'),
+        ],
       ),
     );
   }
@@ -156,395 +145,119 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _loadFestivalStats,
-          color: AppColors.purple,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Header with Admin Name
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _getFormattedDate().toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.purple,
-                              letterSpacing: 0.5,
-                            ),
+      body: UnifiedBackground(
+        child: SafeArea(
+          child: RefreshIndicator(
+            onRefresh: _loadFestivalStats,
+            color: AppColors.electricBlue,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 100.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Unified App Header
+                  UnifiedAppHeader(
+                    dateText: _getFormattedDate(),
+                    greeting: _getGreeting(),
+                    highlightedText: widget.volunteer.name.isNotEmpty
+                        ? widget.volunteer.name
+                        : 'Administrator',
+                    roleSubtitle: 'Festival Administration • Central Operations',
+                    statusIndicatorColor: AppColors.cyan,
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Unified Search Bar
+                  UnifiedSearchBar(
+                    placeholder: 'Search participant, event or record...',
+                    onTap: () => _navigateToTab(2),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Unified Primary Content Card
+                  UnifiedEventCard(
+                    category: '$_totalEvents EVENTS',
+                    eventCode: '$_totalActiveVolunteers STAFF',
+                    title: 'SRISHTI 2.7 Festival Control',
+                    venue: 'Control Center',
+                    date: 'Live System',
+                    time: '$_totalEventAttendance Scans',
+                    onTap: () => _navigateToTab(1),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Unified Primary Action Card
+                  UnifiedPrimaryActionCard(
+                    title: 'FESTIVAL MONITOR',
+                    subtitle: 'Quick scan and attendee verify',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const ScanScreen(
+                            mode: AttendanceMode.arrival,
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${_getGreeting()}, ${widget.volunteer.name}',
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
-                              letterSpacing: -0.4,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: AppColors.purple,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              const Text(
-                                'Festival Administrator • Full System Oversight',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SrishtiLogo(size: 42, compact: true),
-                  ],
-                ),
-                const SizedBox(height: 22),
+                        ),
+                      ).then((_) => _loadFestivalStats());
+                    },
+                  ),
+                  const SizedBox(height: 18),
 
-                // Quick Action Cards
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildQuickActionButton(
-                        icon: Icons.qr_code_scanner_rounded,
-                        label: 'Arrival Scan',
-                        color: AppColors.success,
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const ScanScreen(
-                                mode: AttendanceMode.arrival,
-                              ),
-                            ),
-                          ).then((_) => _loadFestivalStats());
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildQuickActionButton(
-                        icon: Icons.search_rounded,
-                        label: 'Find Participant',
-                        color: AppColors.electricBlue,
-                        onTap: () => _navigateToTab(2),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildQuickActionButton(
-                        icon: Icons.assessment_outlined,
-                        label: 'History Log',
-                        color: AppColors.cyan,
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const HistoryScreen(),
-                            ),
-                          ).then((_) => _loadFestivalStats());
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 22),
-
-                // Festival Statistics Grid (Row 1)
-                Row(
-                  children: [
-                    Expanded(
-                      child: StatCard(
-                        title: 'Participants',
-                        value: '$_totalParticipants',
-                        subtitle: 'Total registered',
-                        icon: Icons.people_outline_rounded,
-                        accentColor: AppColors.electricBlue,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: StatCard(
-                        title: 'Campus Arrivals',
-                        value: '$_totalArrivals',
-                        subtitle: 'Gate check-ins',
-                        icon: Icons.how_to_reg_rounded,
-                        accentColor: AppColors.success,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // Festival Statistics Grid (Row 2)
-                Row(
-                  children: [
-                    Expanded(
-                      child: StatCard(
-                        title: 'Registrations',
-                        value: '$_totalRegistrations',
-                        subtitle: 'Event sign-ups',
-                        icon: Icons.app_registration_rounded,
-                        accentColor: AppColors.warning,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: StatCard(
-                        title: 'Attendance',
-                        value: '$_totalEventAttendance',
-                        subtitle: 'Event marks',
-                        icon: Icons.event_available_rounded,
-                        accentColor: AppColors.cyan,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // Festival Statistics Grid (Row 3)
-                Row(
-                  children: [
-                    Expanded(
-                      child: StatCard(
-                        title: 'Total Events',
-                        value: '$_totalEvents',
-                        subtitle: 'Competitions & talks',
-                        icon: Icons.event_note_rounded,
-                        accentColor: AppColors.purple,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: StatCard(
-                        title: 'Active Staff',
-                        value: '$_totalActiveVolunteers',
-                        subtitle: 'Volunteers online',
-                        icon: Icons.verified_user_outlined,
-                        accentColor: const Color(0xFFE11D48),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 26),
-
-                // Recent Festival Activity
-                SectionHeader(
-                  title: 'Live Festival Scans',
-                  actionLabel: 'All Activity',
-                  onActionTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (context) => const HistoryScreen()),
-                    ).then((_) => _loadFestivalStats());
-                  },
-                ),
-                const SizedBox(height: 8),
-
-                if (_recentActivities.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(22),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'No scans recorded in the database yet.',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary,
+                  // Unified Statistics Cards (2 compact cards matching reference)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: UnifiedStatsCard(
+                          label: 'PARTICIPANTS',
+                          value: '$_totalParticipants',
+                          subtitle: '$_totalRegistrations slots',
+                          icon: Icons.people_alt_rounded,
+                          accentColor: AppColors.blue,
+                          showWave: true,
                         ),
                       ),
-                    ),
-                  )
-                else
-                  ..._recentActivities.take(8).map((act) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10.0),
-                        child: _buildActivityTile(act),
-                      )),
-                const SizedBox(height: 16),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickActionButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-          boxShadow: AppColors.softShadow,
-        ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withAlpha(25),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActivityTile(ActivityItem item) {
-    final isArrival = item.actionType == 'Arrival Check-in';
-    final color = isArrival ? AppColors.success : AppColors.electricBlue;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppColors.softShadow,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: color.withAlpha(20),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              isArrival ? Icons.how_to_reg_rounded : Icons.event_available_rounded,
-              size: 18,
-              color: color,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.participantName,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: UnifiedStatsCard(
+                          label: 'CAMPUS ARRIVALS',
+                          value: '$_totalArrivals',
+                          subtitle: 'Gate check-ins',
+                          icon: Icons.check_circle_rounded,
+                          accentColor: AppColors.success,
+                          showWave: true,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                Text(
-                  item.eventName != null
-                      ? '${item.participantCode} • ${item.eventName}'
-                      : '${item.participantCode} • Campus Arrival',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondary,
+                  const SizedBox(height: 24),
+
+                  // Unified Activity Section
+                  UnifiedActivitySection(
+                    title: 'Live FEST Scans',
+                    actionLabel: 'History',
+                    onActionTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => const HistoryScreen()),
+                      ).then((_) => _loadFestivalStats());
+                    },
+                    emptyMessage: 'No scans recorded in the database yet.',
+                    children: _recentActivities.take(6).map((act) {
+                      final isArrival = act.actionType == 'Arrival Check-in';
+                      return UnifiedActivityCard(
+                        participantName: act.participantName,
+                        participantCode: act.participantCode,
+                        source: act.eventName ?? (isArrival ? 'Campus Arrival' : 'Manual Scan'),
+                        statusLabel: isArrival ? 'Arrival' : 'Attended',
+                        statusColor: isArrival ? AppColors.success : AppColors.electricBlue,
+                        timeString: _formatTimestamp(act.timestamp),
+                      );
+                    }).toList(),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                ],
+              ),
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                isArrival ? 'Arrival' : 'Attended',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: color,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                _formatTimestamp(item.timestamp),
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AppColors.textMuted,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavItem(int index, IconData icon, String label) {
-    final isSelected = _currentIndex == index;
-
-    return InkWell(
-      onTap: () => _navigateToTab(index),
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 24,
-              color: isSelected ? AppColors.purple : AppColors.textMuted,
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? AppColors.purple : AppColors.textMuted,
-              ),
-            ),
-          ],
         ),
       ),
     );

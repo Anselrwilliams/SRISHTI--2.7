@@ -19,15 +19,15 @@ class ParticipantCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border, width: 1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.borderLight, width: 1.2),
         boxShadow: AppColors.softShadow,
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(20),
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(
@@ -37,9 +37,8 @@ class ParticipantCard extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: AppColors.backgroundSecondary,
+                    color: AppColors.blue.withAlpha(15),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.border),
                   ),
                   child: Center(
                     child: Text(
@@ -48,8 +47,8 @@ class ParticipantCard extends StatelessWidget {
                           : 'P',
                       style: const TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.electricBlue,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.blue,
                       ),
                     ),
                   ),

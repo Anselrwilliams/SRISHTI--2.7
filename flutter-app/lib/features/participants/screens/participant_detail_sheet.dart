@@ -465,7 +465,7 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
           const SizedBox(width: 8),
           Text(
             isArrival
-                ? 'FESTIVAL ARRIVAL CHECK-IN'
+                ? 'FEST ARRIVAL CHECK-IN'
                 : 'EVENT ATTENDANCE: ${widget.eventName ?? "Event"}',
             style: const TextStyle(
               fontSize: 11,
@@ -490,7 +490,7 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
       child: Column(
         children: [
           _buildCheckRow(
-            label: 'Festival Arrival',
+            label: 'FEST Arrival',
             isPositive: _hasArrived,
             positiveText: _arrivedAt != null ? 'Checked in (${_formatTime(_arrivedAt!)})' : 'Checked in',
             negativeText: 'Not checked in',
@@ -802,7 +802,7 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
 
       return GradientButton(
         onPressed: _isProcessingAction ? null : _performArrivalCheckin,
-        label: 'Confirm Festival Check-in',
+        label: 'Confirm FEST Check-in',
         icon: Icons.how_to_reg_rounded,
         isLoading: _isProcessingAction,
         height: 52,
@@ -825,7 +825,7 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Participant has not checked in to SRISHTI yet. Festival arrival check-in is required before event attendance.',
+                      'Participant has not checked in to SRISHTI yet. FEST arrival check-in is required before event attendance.',
                       style: TextStyle(
                         fontSize: 12,
                         color: Color(0xFF92400E),
@@ -839,7 +839,7 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
             const SizedBox(height: 12),
             GradientButton(
               onPressed: _isProcessingAction ? null : _performArrivalCheckin,
-              label: 'Check into Festival First',
+              label: 'Check into FEST First',
               icon: Icons.login_rounded,
               isLoading: _isProcessingAction,
               height: 48,

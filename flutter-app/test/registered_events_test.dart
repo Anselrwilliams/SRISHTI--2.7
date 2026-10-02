@@ -205,8 +205,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // UI Before Check-in:
-      expect(find.text('FESTIVAL ARRIVAL CHECK-IN'), findsOneWidget);
-      expect(find.text('Festival Arrival'), findsOneWidget);
+      expect(find.text('FEST ARRIVAL CHECK-IN'), findsOneWidget);
+      expect(find.text('FEST Arrival'), findsOneWidget);
       expect(find.text('Not checked in'), findsOneWidget);
 
       // Registered Events Header:
@@ -224,7 +224,7 @@ void main() {
       expect(find.textContaining('Robotics'), findsOneWidget);
 
       // Action button
-      expect(find.text('Confirm Festival Check-in'), findsOneWidget);
+      expect(find.text('Confirm FEST Check-in'), findsOneWidget);
     });
   });
 
@@ -308,7 +308,7 @@ void main() {
 
       // Button is disabled / indicates already checked in
       expect(find.text('Participant Already Checked In'), findsOneWidget);
-      expect(find.text('Confirm Festival Check-in'), findsNothing);
+      expect(find.text('Confirm FEST Check-in'), findsNothing);
 
       // Registered events still displayed
       expect(find.text('Registered Events'), findsOneWidget);
@@ -336,12 +336,12 @@ void main() {
       await tester.pumpAndSettle();
 
       // Before check-in
-      expect(find.text('Confirm Festival Check-in'), findsOneWidget);
+      expect(find.text('Confirm FEST Check-in'), findsOneWidget);
 
       // Tap Confirm Festival Check-in
-      await tester.ensureVisible(find.text('Confirm Festival Check-in'));
+      await tester.ensureVisible(find.text('Confirm FEST Check-in'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Confirm Festival Check-in'));
+      await tester.tap(find.text('Confirm FEST Check-in'));
       await tester.pumpAndSettle();
 
       expect(mockCheckin.recordArrivalCheckinCalled, isTrue);
@@ -385,7 +385,7 @@ void main() {
       expect(find.text('EVENT ATTENDANCE: Code Sprint'), findsOneWidget);
 
       // Event-specific verification checklist
-      expect(find.text('Festival Arrival'), findsOneWidget);
+      expect(find.text('FEST Arrival'), findsOneWidget);
       expect(find.text('Event Registration'), findsOneWidget);
       expect(find.text('Event Attendance'), findsOneWidget);
       expect(find.text('Registered'), findsOneWidget);
@@ -497,7 +497,7 @@ void main() {
       expect(find.text('GEC Thrissur'), findsOneWidget);
 
       // Arrival check-in action is still enabled
-      expect(find.text('Confirm Festival Check-in'), findsOneWidget);
+      expect(find.text('Confirm FEST Check-in'), findsOneWidget);
     });
   });
 
@@ -581,7 +581,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
 
       // Verify ParticipantDetailSheet opened with all required details
-      expect(find.text('FESTIVAL ARRIVAL CHECK-IN'), findsOneWidget);
+      expect(find.text('FEST ARRIVAL CHECK-IN'), findsOneWidget);
       expect(find.text('Test Student'), findsWidgets); // on tile and on sheet
       expect(find.text('SRI27-TEST01'), findsOneWidget);
       expect(find.text('Test College • CS • Year 2'), findsOneWidget);

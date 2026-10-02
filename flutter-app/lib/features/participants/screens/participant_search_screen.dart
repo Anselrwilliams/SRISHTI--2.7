@@ -117,7 +117,7 @@ class _ParticipantSearchScreenState extends State<ParticipantSearchScreen> {
             Text(
               isEvent
                   ? (widget.eventName ?? 'Event Attendance')
-                  : 'Festival Arrival Check-in',
+                  : 'FEST Arrival Check-in',
               style: const TextStyle(
                 fontSize: 12,
                 color: AppColors.electricBlue,
@@ -198,7 +198,7 @@ class _ParticipantSearchScreenState extends State<ParticipantSearchScreen> {
             ? 'Manual Event Check-in'
             : 'Search Participants',
         description: widget.mode == AttendanceMode.event
-            ? 'Find participant to verify festival arrival and event registration for ${widget.eventName ?? "this event"}.'
+            ? 'Find participant to verify FEST arrival and event registration for ${widget.eventName ?? "this event"}.'
             : 'Enter participant code, name, phone number, or email address to record arrival check-in.',
       );
     }

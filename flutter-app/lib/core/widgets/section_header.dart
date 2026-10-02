@@ -32,9 +32,9 @@ class SectionHeader extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
-                    letterSpacing: -0.3,
+                    letterSpacing: -0.4,
                   ),
                 ),
                 if (subtitle != null) ...[
@@ -53,12 +53,20 @@ class SectionHeader extends StatelessWidget {
           if (actionLabel != null && onActionTap != null)
             GestureDetector(
               onTap: onActionTap,
-              child: Text(
-                actionLabel!,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.electricBlue,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.blue.withAlpha(15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  actionLabel!,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.blue,
+                    letterSpacing: -0.1,
+                  ),
                 ),
               ),
             ),

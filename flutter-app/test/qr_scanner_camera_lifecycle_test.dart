@@ -285,5 +285,191 @@ void main() {
       expect(find.byType(MobileScanner), findsNothing);
       expect(QrCameraManager.instance.hasActiveController, isFalse);
     });
+
+    testWidgets('Camera stops and disposes when top bar Back button is pressed on Scan tab in DashboardScreen', (tester) async {
+      const volunteer = VolunteerModel(
+        id: 'vol-1',
+        username: 'test_vol',
+        name: 'Test Volunteer',
+        role: 'volunteer',
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: DashboardScreen(volunteer: volunteer),
+        ),
+      );
+      await tester.pump();
+
+      // Navigate to Scan
+      await tester.tap(find.text('Scan'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byType(MobileScanner), findsOneWidget);
+      expect(QrCameraManager.instance.hasActiveController, isTrue);
+
+      // Tap top-bar back button
+      final backButton = find.byKey(const Key('scan_top_back_button'));
+      expect(backButton, findsOneWidget);
+      await tester.tap(backButton);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // Should be back on Home tab (tab 0) and camera must be stopped and disposed
+      expect(find.byType(MobileScanner), findsNothing);
+      expect(QrCameraManager.instance.hasActiveController, isFalse);
+    });
+
+    testWidgets('Camera stops when Android system Back button is pressed on Scan tab (PopScope) and returns to Home tab', (tester) async {
+      const volunteer = VolunteerModel(
+        id: 'vol-1',
+        username: 'test_vol',
+        name: 'Test Volunteer',
+        role: 'volunteer',
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: DashboardScreen(volunteer: volunteer),
+        ),
+      );
+      await tester.pump();
+
+      // Navigate to Scan
+      await tester.tap(find.text('Scan'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byType(MobileScanner), findsOneWidget);
+      expect(QrCameraManager.instance.hasActiveController, isTrue);
+
+      // Simulate Android system back button via tester.binding.handlePopRoute()
+      final popHandled = await tester.binding.handlePopRoute();
+      expect(popHandled, isTrue); // Intercepted by PopScope
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // Returned to Home tab, camera stopped and disposed
+      expect(find.byType(MobileScanner), findsNothing);
+      expect(QrCameraManager.instance.hasActiveController, isFalse);
+    });
+
+    testWidgets('Camera stops when switching to Event/Profile and restarts when Scan is opened again', (tester) async {
+      const volunteer = VolunteerModel(
+        id: 'vol-1',
+        username: 'test_vol',
+        name: 'Test Volunteer',
+        role: 'volunteer',
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: DashboardScreen(volunteer: volunteer),
+        ),
+      );
+      await tester.pump();
+
+      // Open Scan
+      await tester.tap(find.text('Scan'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byType(MobileScanner), findsOneWidget);
+      expect(QrCameraManager.instance.hasActiveController, isTrue);
+
+      // Switch to Event tab
+      await tester.tap(find.text('Event'), warnIfMissed: false);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byType(MobileScanner), findsNothing);
+      expect(QrCameraManager.instance.hasActiveController, isFalse);
+
+      // Switch to Profile tab
+      await tester.tap(find.text('Profile'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byType(MobileScanner), findsNothing);
+      expect(QrCameraManager.instance.hasActiveController, isFalse);
+
+      // Re-open Scan tab
+      await tester.tap(find.text('Scan'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byType(MobileScanner), findsOneWidget);
+      expect(QrCameraManager.instance.hasActiveController, isTrue);
+    });
+
+    testWidgets('Successful scan stops camera and navigating away leaves camera fully disposed', (tester) async {
+      const volunteer = VolunteerModel(
+        id: 'vol-1',
+        username: 'test_vol',
+        name: 'Test Volunteer',
+        role: 'volunteer',
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: DashboardScreen(volunteer: volunteer),
+        ),
+      );
+      await tester.pump();
+
+      // Open Scan
+      await tester.tap(find.text('Scan'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byType(MobileScanner), findsOneWidget);
+
+      // Simulate camera stopped after scan completion
+      ScanScreen.stopActiveScanner();
+      await tester.pump();
+
+      // Camera is in standby
+      expect(find.byType(MobileScanner), findsNothing);
+
+      // Leaving Scan tab to Home
+      await tester.tap(find.text('Home'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // Controller is fully cleaned up
+      expect(QrCameraManager.instance.hasActiveController, isFalse);
+    });
+
+    testWidgets('Rapid tab switching does not cause duplicate controllers or crashes', (tester) async {
+      const volunteer = VolunteerModel(
+        id: 'vol-1',
+        username: 'test_vol',
+        name: 'Test Volunteer',
+        role: 'volunteer',
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: DashboardScreen(volunteer: volunteer),
+        ),
+      );
+      await tester.pump();
+
+      // Rapidly switch between Home and Scan
+      await tester.tap(find.text('Scan'));
+      await tester.tap(find.text('Home'));
+      await tester.tap(find.text('Scan'));
+      await tester.tap(find.text('Home'));
+      await tester.tap(find.text('Scan'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byType(MobileScanner), findsOneWidget);
+      expect(QrCameraManager.instance.hasActiveController, isTrue);
+
+      // Finally switch back to Home
+      await tester.tap(find.text('Home'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byType(MobileScanner), findsNothing);
+      expect(QrCameraManager.instance.hasActiveController, isFalse);
+    });
   });
 }

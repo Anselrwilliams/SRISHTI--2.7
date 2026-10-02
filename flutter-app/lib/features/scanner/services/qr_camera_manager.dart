@@ -64,7 +64,6 @@ class QrCameraManager {
       await controller.start();
     } catch (e) {
       debugPrint('QrCameraManager: Error starting active camera: $e');
-      rethrow;
     }
   }
 
@@ -74,7 +73,7 @@ class QrCameraManager {
     if (controller == null) return;
 
     try {
-      if (controller.value.isRunning) {
+      if (controller.value.isRunning || controller.value.isStarting) {
         await controller.stop();
       }
     } catch (e) {
@@ -101,7 +100,7 @@ class QrCameraManager {
     _activeController = null;
     if (controller != null) {
       try {
-        if (controller.value.isRunning) {
+        if (controller.value.isRunning || controller.value.isStarting) {
           await controller.stop();
         }
       } catch (e) {
