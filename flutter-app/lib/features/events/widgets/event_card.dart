@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/time_formatter.dart';
 import '../../../core/widgets/app_status_badge.dart';
 import '../models/event_model.dart';
 
@@ -78,7 +79,7 @@ class EventCard extends StatelessWidget {
                     const Icon(Icons.schedule_rounded, size: 14, color: AppColors.textSecondary),
                     const SizedBox(width: 4),
                     Text(
-                      '${event.date ?? "Day 1"} • ${event.time ?? "10:00 AM"}',
+                      '${event.date ?? "Day 1"} • ${TimeFormatter.formatTimeOrRange(event.time).isNotEmpty ? TimeFormatter.formatTimeOrRange(event.time) : (event.time ?? "10:00 AM")}',
                       style: const TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,

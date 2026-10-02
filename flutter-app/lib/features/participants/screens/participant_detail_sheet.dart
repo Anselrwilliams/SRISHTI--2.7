@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/time_formatter.dart';
 import '../../../core/widgets/gradient_button.dart';
 import '../../checkin/models/attendance_mode.dart';
 import '../../checkin/services/checkin_service.dart';
+import '../../events/models/event_model.dart';
 import '../models/participant_model.dart';
+import '../services/participant_service.dart';
 
 /// Modal sheet displaying participant details with real two-stage verification
 /// for both Festival Arrival and Event Attendance workflows.
@@ -14,6 +17,9 @@ class ParticipantDetailSheet extends StatefulWidget {
   final String? eventName;
   final String source; // 'qr' or 'manual'
   final VoidCallback? onActionSuccess;
+  final ParticipantService? participantService;
+  final CheckinService? checkinService;
+  final List<EventModel>? initialRegisteredEvents;
 
   const ParticipantDetailSheet({
     super.key,
@@ -23,6 +29,9 @@ class ParticipantDetailSheet extends StatefulWidget {
     this.eventName,
     this.source = 'qr',
     this.onActionSuccess,
+    this.participantService,
+    this.checkinService,
+    this.initialRegisteredEvents,
   });
 
   static Future<void> show(
@@ -33,6 +42,9 @@ class ParticipantDetailSheet extends StatefulWidget {
     String? eventName,
     String source = 'qr',
     VoidCallback? onActionSuccess,
+    ParticipantService? participantService,
+    CheckinService? checkinService,
+    List<EventModel>? initialRegisteredEvents,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -45,6 +57,9 @@ class ParticipantDetailSheet extends StatefulWidget {
         eventName: eventName,
         source: source,
         onActionSuccess: onActionSuccess,
+        participantService: participantService,
+        checkinService: checkinService,
+        initialRegisteredEvents: initialRegisteredEvents,
       ),
     );
   }
@@ -55,7 +70,8 @@ class ParticipantDetailSheet extends StatefulWidget {
 
 class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
   late ParticipantModel _participant;
-  final CheckinService _checkinService = CheckinService();
+  late final CheckinService _checkinService;
+  late final ParticipantService _participantService;
 
   bool _isLoadingInitialState = true;
   bool _isProcessingAction = false;
@@ -68,6 +84,11 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
   bool _hasAttendedEvent = false;
   DateTime? _eventAttendedAt;
 
+  // Registered events state for Arrival Mode
+  List<EventModel> _registeredEvents = [];
+  bool _isLoadingRegisteredEvents = false;
+  String? _registeredEventsError;
+
   String? _successMessage;
   String? _warningMessage;
   String? _errorMessage;
@@ -76,22 +97,38 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
   void initState() {
     super.initState();
     _participant = widget.participant;
+    _checkinService = widget.checkinService ?? CheckinService();
+    _participantService = widget.participantService ?? ParticipantService();
+    if (widget.initialRegisteredEvents != null) {
+      _registeredEvents = List.from(widget.initialRegisteredEvents!);
+    }
     _validateParticipantState();
   }
 
   Future<void> _validateParticipantState() async {
-    setState(() => _isLoadingInitialState = true);
+    setState(() {
+      _isLoadingInitialState = true;
+      if (widget.mode == AttendanceMode.arrival && widget.initialRegisteredEvents == null) {
+        _isLoadingRegisteredEvents = true;
+      }
+    });
+
+    final effectiveParticipantId = _participant.id.isNotEmpty
+        ? _participant.id
+        : _participant.participantCode;
 
     try {
-      final effectiveParticipantId = _participant.id.isNotEmpty
-          ? _participant.id
-          : _participant.participantCode;
-
       // 1. Check arrival check-in status
       final arrivalData = await _checkinService.getArrivalCheckin(effectiveParticipantId);
-      _hasArrived = arrivalData != null;
+      _hasArrived = arrivalData != null || _participant.isCheckedIn;
       if (arrivalData != null && arrivalData['checked_in_at'] != null) {
         _arrivedAt = DateTime.tryParse(arrivalData['checked_in_at'].toString());
+      } else if (_participant.checkedInAt != null) {
+        _arrivedAt = _participant.checkedInAt;
+      }
+
+      if (_hasArrived && widget.mode == AttendanceMode.arrival) {
+        _warningMessage = 'Already checked in';
       }
 
       if (widget.mode == AttendanceMode.event && widget.eventId != null) {
@@ -117,6 +154,27 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
     } finally {
       if (mounted) {
         setState(() => _isLoadingInitialState = false);
+      }
+    }
+
+    // 4. Fetch registered events for Arrival Mode (non-blocking for participant identification)
+    if (widget.mode == AttendanceMode.arrival && widget.initialRegisteredEvents == null) {
+      try {
+        final events = await _participantService.getParticipantRegisteredEvents(effectiveParticipantId);
+        if (mounted) {
+          setState(() {
+            _registeredEvents = events;
+            _registeredEventsError = null;
+            _isLoadingRegisteredEvents = false;
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _registeredEventsError = 'Unable to load registered events.';
+            _isLoadingRegisteredEvents = false;
+          });
+        }
       }
     }
   }
@@ -147,7 +205,7 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
         setState(() {
           _hasArrived = true;
           _arrivedAt = result.recordedAt ?? DateTime.now();
-          _successMessage = '✓ Check-in successful';
+          _successMessage = '✓ ARRIVAL CHECK-IN COMPLETE';
         });
         widget.onActionSuccess?.call();
       } else if (result.isDuplicate) {
@@ -226,6 +284,9 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.9,
+      ),
       decoration: const BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -246,123 +307,141 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
                 ),
               ),
             )
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Drag Handle
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(2),
+          : SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Drag Handle
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.border,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                // Workflow Context Banner
-                _buildWorkflowHeader(),
-                const SizedBox(height: 14),
+                  // Workflow Context Banner
+                  _buildWorkflowHeader(),
+                  const SizedBox(height: 14),
 
-                // Participant Header
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceDark,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        _participant.participantCode,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.cyan,
-                          letterSpacing: 0.5,
+                  // Participant Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceDark,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _participant.participantCode,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.cyan,
+                            letterSpacing: 0.5,
+                          ),
                         ),
                       ),
-                    ),
-                    Text(
-                      'Source: ${widget.source.toUpperCase()}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
+                      Text(
+                        'Source: ${widget.source.toUpperCase()}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  Text(
+                    _participant.name,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                      letterSpacing: -0.4,
                     ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    [
+                      _participant.college ?? 'External Participant',
+                      if (_participant.department != null &&
+                          _participant.department!.trim().isNotEmpty)
+                        _participant.department!.trim(),
+                      if (_participant.year != null &&
+                          _participant.year!.trim().isNotEmpty)
+                        _participant.year!.trim().toLowerCase().contains('year')
+                            ? _participant.year!.trim()
+                            : 'Year ${_participant.year!.trim()}',
+                    ].join(' • '),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Status & Messages
+                  if (_successMessage != null) ...[
+                    _buildStatusBanner(
+                      color: AppColors.success,
+                      bg: AppColors.successBg,
+                      border: AppColors.successBorder,
+                      icon: Icons.check_circle_rounded,
+                      title: _successMessage!,
+                    ),
+                    const SizedBox(height: 16),
                   ],
-                ),
-                const SizedBox(height: 12),
 
-                Text(
-                  _participant.name,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                    letterSpacing: -0.4,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _participant.college ?? 'External Participant',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 18),
+                  if (_warningMessage != null) ...[
+                    _buildStatusBanner(
+                      color: AppColors.warning,
+                      bg: AppColors.warningBg,
+                      border: AppColors.warningBorder,
+                      icon: Icons.warning_amber_rounded,
+                      title: _warningMessage!,
+                      subtitle: widget.mode == AttendanceMode.arrival
+                          ? (_arrivedAt != null ? 'Checked in at ${_formatTime(_arrivedAt!)}' : null)
+                          : (_eventAttendedAt != null ? 'Marked present at ${_formatTime(_eventAttendedAt!)}' : null),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
 
-                // Status & Messages
-                if (_successMessage != null) ...[
-                  _buildStatusBanner(
-                    color: AppColors.success,
-                    bg: AppColors.successBg,
-                    border: AppColors.successBorder,
-                    icon: Icons.check_circle_rounded,
-                    title: _successMessage!,
-                  ),
+                  if (_errorMessage != null) ...[
+                    _buildStatusBanner(
+                      color: AppColors.error,
+                      bg: AppColors.errorBg,
+                      border: AppColors.errorBorder,
+                      icon: Icons.error_outline_rounded,
+                      title: _errorMessage!,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Verification Details Checklist
+                  _buildVerificationChecklist(),
                   const SizedBox(height: 16),
+
+                  // Registered Events Section (when in AttendanceMode.arrival)
+                  if (widget.mode == AttendanceMode.arrival) ...[
+                    _buildRegisteredEventsSection(),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Dynamic Action Button based on Workflow
+                  _buildWorkflowActionButton(),
                 ],
-
-                if (_warningMessage != null) ...[
-                  _buildStatusBanner(
-                    color: AppColors.warning,
-                    bg: AppColors.warningBg,
-                    border: AppColors.warningBorder,
-                    icon: Icons.warning_amber_rounded,
-                    title: _warningMessage!,
-                    subtitle: widget.mode == AttendanceMode.arrival
-                        ? (_arrivedAt != null ? 'Checked in at ${_formatTime(_arrivedAt!)}' : null)
-                        : (_eventAttendedAt != null ? 'Marked present at ${_formatTime(_eventAttendedAt!)}' : null),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
-                if (_errorMessage != null) ...[
-                  _buildStatusBanner(
-                    color: AppColors.error,
-                    bg: AppColors.errorBg,
-                    border: AppColors.errorBorder,
-                    icon: Icons.error_outline_rounded,
-                    title: _errorMessage!,
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
-                // Verification Details Checklist
-                _buildVerificationChecklist(),
-                const SizedBox(height: 20),
-
-                // Dynamic Action Button based on Workflow
-                _buildWorkflowActionButton(),
-              ],
+              ),
             ),
     );
   }
@@ -411,10 +490,10 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
       child: Column(
         children: [
           _buildCheckRow(
-            label: 'Festival Arrival Check-in',
+            label: 'Festival Arrival',
             isPositive: _hasArrived,
-            positiveText: _arrivedAt != null ? 'Arrived (${_formatTime(_arrivedAt!)})' : 'Arrived',
-            negativeText: 'Not checked in to SRISHTI yet',
+            positiveText: _arrivedAt != null ? 'Checked in (${_formatTime(_arrivedAt!)})' : 'Checked in',
+            negativeText: 'Not checked in',
           ),
           if (widget.mode == AttendanceMode.event) ...[
             const Divider(height: 16),
@@ -436,6 +515,226 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildRegisteredEventsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Registered Events',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+                letterSpacing: 0.2,
+              ),
+            ),
+            if (!_isLoadingRegisteredEvents &&
+                _registeredEventsError == null &&
+                _registeredEvents.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.electricBlue.withAlpha(20),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${_registeredEvents.length}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.electricBlue,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        if (_isLoadingRegisteredEvents)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.backgroundSecondary,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.borderLight),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.electricBlue),
+                  ),
+                ),
+                SizedBox(width: 12),
+                Text(
+                  'Loading registered events...',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (_registeredEventsError != null)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.warningBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.warningBorder),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline_rounded, size: 18, color: AppColors.warning),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _registeredEventsError!,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.warning,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (_registeredEvents.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundSecondary,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.borderLight),
+            ),
+            child: const Center(
+              child: Text(
+                'No registered events',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _registeredEvents.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final event = _registeredEvents[index];
+              final metadataList = <String>[];
+              if (event.category.trim().isNotEmpty) {
+                metadataList.add(event.category.trim());
+              }
+              if (event.venue != null && event.venue!.trim().isNotEmpty) {
+                metadataList.add(event.venue!.trim());
+              }
+              final rawTime = (event.time != null && event.time!.trim().isNotEmpty)
+                  ? event.time
+                  : (event.startTime != null && event.endTime != null)
+                      ? '${event.startTime} - ${event.endTime}'
+                      : event.startTime;
+              final formattedTime = TimeFormatter.formatTimeOrRange(rawTime);
+              final dateTimeList = <String>[
+                if (event.date != null && event.date!.trim().isNotEmpty) event.date!.trim(),
+                if (formattedTime.isNotEmpty) formattedTime,
+              ];
+              if (dateTimeList.isNotEmpty) {
+                metadataList.add(dateTimeList.join(' • '));
+              }
+
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundSecondary,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.borderLight),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '• ',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.electricBlue,
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  event.name,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                              if (event.eventCode.isNotEmpty) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surfaceDark,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    event.eventCode,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.cyan,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          if (metadataList.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              metadataList.join(' | '),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+      ],
     );
   }
 

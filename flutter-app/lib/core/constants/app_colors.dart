@@ -69,6 +69,10 @@ class AppColors {
   static const Color infoBg = Color(0xFFF0F9FF);
   static const Color infoBorder = Color(0xFFBAE6FD);
 
+  static const Color purple = Color(0xFF8B5CF6);
+  static const Color purpleBg = Color(0xFFF5F3FF);
+  static const Color purpleBorder = Color(0xFFDDD6FE);
+
   // Apple-style soft shadows
   static List<BoxShadow> get softShadow => [
         BoxShadow(

@@ -7,16 +7,25 @@ import '../../participants/models/participant_model.dart';
 import '../../participants/screens/participant_detail_sheet.dart';
 import '../../participants/screens/participant_search_screen.dart';
 import '../../participants/services/participant_service.dart';
+import '../services/qr_camera_manager.dart';
 import '../widgets/scan_overlay.dart';
 
 /// Technology-focused scanner screen supporting both:
 /// 1. Festival Arrival Check-in (Main Gate)
 /// 2. Event-Specific Attendance Check-in
+///
+/// Features strict camera lifecycle management:
+/// - Camera remains completely stopped when inactive or offstage.
+/// - Starts only on explicit user scanning action.
+/// - Immediately stops before displaying participant details.
+/// - Remains off when details sheet closes until user taps "Scan Again".
+/// - Disposes camera when navigating away or on logout.
 class ScanScreen extends StatefulWidget {
   final AttendanceMode mode;
   final String? eventId;
   final String? eventName;
   final VoidCallback? onScanComplete;
+  final bool isActive;
 
   const ScanScreen({
     super.key,
@@ -24,30 +33,170 @@ class ScanScreen extends StatefulWidget {
     this.eventId,
     this.eventName,
     this.onScanComplete,
+    this.isActive = true,
   });
+
+  /// Explicitly resumes or starts scanning on any active [ScanScreen] instance.
+  static void resumeActiveScanner() {
+    _ScanScreenState.resumeActiveScanner();
+  }
+
+  /// Explicitly pauses or stops scanning on any active [ScanScreen] instance.
+  static void stopActiveScanner() {
+    _ScanScreenState.stopActiveScanner();
+  }
 
   @override
   State<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _ScanScreenState extends State<ScanScreen> {
-  final MobileScannerController _scannerController = MobileScannerController(
-    detectionSpeed: DetectionSpeed.normal,
-    facing: CameraFacing.back,
-    torchEnabled: false,
-  );
+class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
+  static final Set<_ScanScreenState> _registeredStates = {};
 
+  static void resumeActiveScanner() {
+    for (final state in _registeredStates) {
+      if (state.mounted && state.widget.isActive) {
+        state._startCamera();
+      }
+    }
+  }
+
+  static void stopActiveScanner() {
+    for (final state in _registeredStates) {
+      if (state.mounted) {
+        state._stopCamera();
+      }
+    }
+  }
+
+  MobileScannerController? _scannerController;
+  bool _isCameraRunning = false;
+  bool _isStartingCamera = false;
   bool _isProcessingScan = false;
+  bool _hasScannedOnce = false;
   bool _isTorchOn = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _registeredStates.add(this);
+
+    // Only start camera if this screen is actively visible/focused
+    if (widget.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.isActive) {
+          _startCamera();
+        }
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(ScanScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive != oldWidget.isActive) {
+      if (widget.isActive) {
+        _startCamera();
+      } else {
+        _disposeCamera();
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      if (_isCameraRunning) {
+        _stopCamera();
+      }
+    }
+  }
+
+  @override
   void dispose() {
-    _scannerController.dispose();
+    _registeredStates.remove(this);
+    WidgetsBinding.instance.removeObserver(this);
+    _isCameraRunning = false;
+    _scannerController = null;
+    _isTorchOn = false;
+    QrCameraManager.instance.stopAndDispose();
     super.dispose();
   }
 
+  Future<void> _startCamera() async {
+    if (!mounted || !widget.isActive || _isStartingCamera) return;
+    setState(() => _isStartingCamera = true);
+
+    try {
+      _isTorchOn = false;
+      final controller = await QrCameraManager.instance.acquireController(
+        facing: CameraFacing.back,
+        detectionSpeed: DetectionSpeed.normal,
+        torchEnabled: false,
+      );
+
+      if (!mounted || !widget.isActive) {
+        await QrCameraManager.instance.stopAndDispose();
+        return;
+      }
+
+      setState(() {
+        _scannerController = controller;
+        _isCameraRunning = true;
+      });
+
+      // Allow widget tree to attach MobileScanner widget before invoking start()
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted || !widget.isActive || !_isCameraRunning) return;
+        try {
+          await QrCameraManager.instance.startActiveCamera();
+        } catch (e) {
+          debugPrint('ScanScreen: Error starting camera controller: $e');
+        }
+      });
+    } catch (e) {
+      debugPrint('ScanScreen: Error acquiring camera: $e');
+      if (mounted) {
+        setState(() => _isCameraRunning = false);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isStartingCamera = false);
+      }
+    }
+  }
+
+  Future<void> _stopCamera() async {
+    if (mounted) {
+      setState(() {
+        _isCameraRunning = false;
+        _isTorchOn = false;
+      });
+    } else {
+      _isCameraRunning = false;
+      _isTorchOn = false;
+    }
+    await QrCameraManager.instance.stopActiveCamera();
+  }
+
+  Future<void> _disposeCamera() async {
+    if (mounted) {
+      setState(() {
+        _isCameraRunning = false;
+        _scannerController = null;
+        _isTorchOn = false;
+      });
+    } else {
+      _isCameraRunning = false;
+      _scannerController = null;
+      _isTorchOn = false;
+    }
+    await QrCameraManager.instance.stopAndDispose();
+  }
+
   Future<void> _handleBarcodeDetected(BarcodeCapture capture) async {
-    if (_isProcessingScan) return;
+    if (_isProcessingScan || !_isCameraRunning) return;
 
     final barcodes = capture.barcodes;
     if (barcodes.isEmpty) return;
@@ -64,8 +213,14 @@ class _ScanScreenState extends State<ScanScreen> {
       if (!mounted) return;
 
       if (participantData == null) {
-        // Validation State: Participant not found
-        await _showInvalidCodeDialog(rawValue);
+        // Validation State: Participant not found - stop camera while showing dialog
+        await _stopCamera();
+        _hasScannedOnce = true;
+        if (!mounted) return;
+        final rescan = await _showInvalidCodeDialog(rawValue);
+        if (rescan == true && mounted && widget.isActive) {
+          await _startCamera();
+        }
       } else {
         // Fetch checkin status
         final checkinData = await CheckinService().getArrivalCheckin(
@@ -82,6 +237,11 @@ class _ScanScreenState extends State<ScanScreen> {
               : null,
         );
 
+        // 4. When QR scan succeeds, immediately stop/pause the camera before showing the sheet
+        await _stopCamera();
+        _hasScannedOnce = true;
+        if (!mounted) return;
+
         // Display participant detail sheet with current workflow context
         await ParticipantDetailSheet.show(
           context,
@@ -94,23 +254,25 @@ class _ScanScreenState extends State<ScanScreen> {
             widget.onScanComplete?.call();
           },
         );
+
+        // 5. When participant details sheet is closed, camera must remain OFF
+        // (Do NOT resume camera automatically; wait for explicit Scan Again tap)
       }
     } catch (e) {
+      if (!mounted) return;
+      await _stopCamera();
+      _hasScannedOnce = true;
       if (!mounted) return;
       await _showErrorDialog(e.toString());
     } finally {
       if (mounted) {
-        // Delay slightly before re-enabling scanner to prevent immediate double-scan
-        await Future.delayed(const Duration(milliseconds: 900));
-        if (mounted) {
-          setState(() => _isProcessingScan = false);
-        }
+        setState(() => _isProcessingScan = false);
       }
     }
   }
 
-  Future<void> _showInvalidCodeDialog(String code) {
-    return showDialog<void>(
+  Future<bool?> _showInvalidCodeDialog(String code) {
+    return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surfaceDarkCard,
@@ -156,13 +318,13 @@ class _ScanScreenState extends State<ScanScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Scan Again', style: TextStyle(color: AppColors.cyan)),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.electricBlue),
             onPressed: () {
-              Navigator.of(context).pop();
+              Navigator.of(context).pop(false);
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) => ParticipantSearchScreen(
@@ -201,8 +363,153 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
+  Widget _buildCameraStoppedView(bool isEventMode) {
+    final buttonLabel = _hasScannedOnce
+        ? 'Scan Again'
+        : (isEventMode ? 'Scan participant QR' : 'Scan participant QR');
+
+    return Container(
+      color: AppColors.surfaceDark,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28.0),
+          child: Container(
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceDarkCard,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: _hasScannedOnce ? AppColors.electricBlue : AppColors.cyan.withAlpha(140),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: (_hasScannedOnce ? AppColors.electricBlue : AppColors.cyan).withAlpha(40),
+                  blurRadius: 20,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    gradient: _hasScannedOnce
+                        ? const LinearGradient(
+                            colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+                          )
+                        : AppColors.primaryGradient,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: (_hasScannedOnce ? AppColors.electricBlue : AppColors.cyan).withAlpha(90),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.qr_code_scanner_rounded,
+                      color: Colors.white,
+                      size: 36,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  _hasScannedOnce ? 'Scan Completed' : 'Camera Standby',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _hasScannedOnce
+                      ? 'Camera paused to save battery. Tap below to scan the next participant.'
+                      : (isEventMode
+                          ? 'Tap below to activate the camera for event attendance.'
+                          : 'Tap below to activate the camera for festival arrival.'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.textDarkSecondary,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    key: const Key('scan_again_button'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _hasScannedOnce ? AppColors.electricBlue : AppColors.cyan,
+                      foregroundColor: _hasScannedOnce ? Colors.white : Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 4,
+                    ),
+                    onPressed: _startCamera,
+                    icon: Icon(
+                      _hasScannedOnce ? Icons.refresh_rounded : Icons.qr_code_scanner_rounded,
+                      size: 20,
+                    ),
+                    label: Text(
+                      buttonLabel,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ),
+                ),
+                if (_hasScannedOnce) ...[
+                  const SizedBox(height: 10),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => ParticipantSearchScreen(
+                            mode: widget.mode,
+                            eventId: widget.eventId,
+                            eventName: widget.eventName,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.search_rounded, size: 16, color: AppColors.textDarkSecondary),
+                    label: const Text(
+                      'Search Manually Instead',
+                      style: TextStyle(color: AppColors.textDarkSecondary, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // If the scanner tab is not active, render an empty view to strictly ensure zero camera usage
+    if (!widget.isActive) {
+      return const Scaffold(
+        backgroundColor: AppColors.surfaceDark,
+        body: SizedBox.expand(),
+      );
+    }
+
     final isEventMode = widget.mode == AttendanceMode.event;
 
     return Scaffold(
@@ -210,61 +517,65 @@ class _ScanScreenState extends State<ScanScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Camera Preview
-          MobileScanner(
-            controller: _scannerController,
-            onDetect: _handleBarcodeDetected,
-            errorBuilder: (context, error) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(28.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.videocam_off_outlined,
-                        size: 56,
-                        color: AppColors.textDarkSecondary,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Camera Unavailable',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Please ensure camera permissions are granted in settings.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
+          // Camera Preview or Standby View
+          if (_isCameraRunning && _scannerController != null)
+            MobileScanner(
+              controller: _scannerController!,
+              onDetect: _handleBarcodeDetected,
+              errorBuilder: (context, error) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(28.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.videocam_off_outlined,
+                          size: 56,
                           color: AppColors.textDarkSecondary,
-                          fontSize: 14,
                         ),
-                      ),
-                      const SizedBox(height: 24),
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.cyan,
-                          side: const BorderSide(color: AppColors.cyan),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Camera Unavailable',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                        onPressed: () => _scannerController.start(),
-                        icon: const Icon(Icons.refresh_rounded),
-                        label: const Text('Retry Camera'),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Please ensure camera permissions are granted in settings.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppColors.textDarkSecondary,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.cyan,
+                            side: const BorderSide(color: AppColors.cyan),
+                          ),
+                          onPressed: _startCamera,
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Retry Camera'),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            )
+          else
+            _buildCameraStoppedView(isEventMode),
 
-          // Cyber-Minimalist Frame & Laser Overlay
-          const Center(
-            child: ScanOverlay(scanAreaSize: 260),
-          ),
+          // Cyber-Minimalist Frame & Laser Overlay (active while camera is streaming)
+          if (_isCameraRunning && _scannerController != null)
+            const Center(
+              child: ScanOverlay(scanAreaSize: 260),
+            ),
 
           // Top Header Bar
           SafeArea(
@@ -278,7 +589,7 @@ class _ScanScreenState extends State<ScanScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // Back button if pushed modally (e.g. from Events Screen)
+                        // Back button if pushed modally (e.g. from Events Screen or Admin Dashboard)
                         if (Navigator.of(context).canPop())
                           IconButton(
                             style: IconButton.styleFrom(
@@ -338,10 +649,12 @@ class _ScanScreenState extends State<ScanScreen> {
                                 color: _isTorchOn ? AppColors.cyan : Colors.white,
                                 size: 18,
                               ),
-                              onPressed: () async {
-                                await _scannerController.toggleTorch();
-                                setState(() => _isTorchOn = !_isTorchOn);
-                              },
+                              onPressed: (_isCameraRunning && _scannerController != null)
+                                  ? () async {
+                                      await _scannerController?.toggleTorch();
+                                      setState(() => _isTorchOn = !_isTorchOn);
+                                    }
+                                  : null,
                             ),
                             const SizedBox(width: 6),
                             IconButton(
@@ -350,7 +663,9 @@ class _ScanScreenState extends State<ScanScreen> {
                                 side: const BorderSide(color: AppColors.borderDarkSubtle),
                               ),
                               icon: const Icon(Icons.flip_camera_ios_rounded, color: Colors.white, size: 18),
-                              onPressed: () => _scannerController.switchCamera(),
+                              onPressed: (_isCameraRunning && _scannerController != null)
+                                  ? () => _scannerController?.switchCamera()
+                                  : null,
                             ),
                           ],
                         ),

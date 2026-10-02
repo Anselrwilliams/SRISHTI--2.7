@@ -650,4 +650,211 @@ class CheckinService {
     }
     return items;
   }
+
+  // ===========================================================================
+  // ROLE-BASED DASHBOARD QUERIES & METRICS
+  // ===========================================================================
+
+  /// Returns registration count and attendance count for a given event ID or code.
+  Future<Map<String, int>> getEventCounts(String eventId) async {
+    final eId = await resolveEventId(eventId) ?? (isUuid(eventId) ? eventId : null);
+    if (eId == null) {
+      return {'registered': 0, 'attended': 0};
+    }
+
+    int registered = 0;
+    int attended = 0;
+
+    try {
+      registered = await _supabaseService.client
+          .from('registrations')
+          .count(CountOption.exact)
+          .eq('event_id', eId);
+    } catch (_) {}
+
+    try {
+      attended = await _supabaseService.client
+          .from('event_attendance')
+          .count(CountOption.exact)
+          .eq('event_id', eId);
+    } catch (_) {}
+
+    return {'registered': registered, 'attended': attended};
+  }
+
+  /// Returns recent event attendances specifically for a single event.
+  Future<List<ActivityItem>> getEventRecentActivities(String eventId, {int limit = 20}) async {
+    final eId = await resolveEventId(eventId) ?? (isUuid(eventId) ? eventId : null);
+    if (eId == null) return [];
+
+    final List<ActivityItem> items = [];
+    try {
+      final attendances = await _supabaseService.client
+          .from('event_attendance')
+          .select('id, marked_at, source, participants(name, participant_code), events(name)')
+          .eq('event_id', eId)
+          .order('marked_at', ascending: false)
+          .limit(limit);
+
+      for (final att in attendances) {
+        final participant = att['participants'] as Map<String, dynamic>?;
+        final event = att['events'] as Map<String, dynamic>?;
+
+        items.add(
+          ActivityItem(
+            id: att['id']?.toString() ?? '',
+            participantName: participant?['name']?.toString() ?? 'Participant',
+            participantCode: participant?['participant_code']?.toString() ?? '—',
+            eventName: event?['name']?.toString(),
+            actionType: 'Event Attendance',
+            source: att['source']?.toString().toUpperCase() == 'MANUAL' ? 'Manual Search' : 'QR Scan',
+            timestamp: att['marked_at'] != null
+                ? DateTime.tryParse(att['marked_at'].toString()) ?? DateTime.now()
+                : DateTime.now(),
+          ),
+        );
+      }
+    } catch (_) {}
+
+    return items;
+  }
+
+  /// Returns recent festival arrival check-ins only.
+  Future<List<ActivityItem>> getRecentArrivals({int limit = 20}) async {
+    final List<ActivityItem> items = [];
+    try {
+      final arrivals = await _supabaseService.client
+          .from('arrival_checkins')
+          .select('id, checked_in_at, source, participants(name, participant_code)')
+          .order('checked_in_at', ascending: false)
+          .limit(limit);
+
+      for (final a in arrivals) {
+        final participant = a['participants'] as Map<String, dynamic>?;
+        items.add(
+          ActivityItem(
+            id: a['id']?.toString() ?? '',
+            participantName: participant?['name']?.toString() ?? 'Participant',
+            participantCode: participant?['participant_code']?.toString() ?? '—',
+            actionType: 'Arrival Check-in',
+            source: a['source']?.toString().toUpperCase() == 'MANUAL' ? 'Manual Search' : 'QR Scan',
+            timestamp: a['checked_in_at'] != null
+                ? DateTime.tryParse(a['checked_in_at'].toString()) ?? DateTime.now()
+                : DateTime.now(),
+          ),
+        );
+      }
+    } catch (_) {}
+
+    return items;
+  }
+
+  /// Returns total registered participants in the system.
+  Future<int> getTotalParticipantsCount() async {
+    try {
+      return await _supabaseService.client
+          .from('participants')
+          .count(CountOption.exact);
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Returns total festival arrival check-ins.
+  Future<int> getTotalArrivalsCount() async {
+    try {
+      return await _supabaseService.client
+          .from('arrival_checkins')
+          .count(CountOption.exact);
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Returns total event registrations across all events.
+  Future<int> getTotalRegistrationsCount() async {
+    try {
+      return await _supabaseService.client
+          .from('registrations')
+          .count(CountOption.exact);
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Returns total event attendance records across all events.
+  Future<int> getTotalEventAttendanceCount() async {
+    try {
+      return await _supabaseService.client
+          .from('event_attendance')
+          .count(CountOption.exact);
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Returns total number of events.
+  Future<int> getTotalEventsCount() async {
+    try {
+      return await _supabaseService.client
+          .from('events')
+          .count(CountOption.exact);
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Returns total active volunteers.
+  Future<int> getTotalActiveVolunteersCount() async {
+    try {
+      return await _supabaseService.client
+          .from('volunteers')
+          .count(CountOption.exact)
+          .eq('status', 'active');
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Returns total scans performed by a specific volunteer.
+  Future<Map<String, int>> getVolunteerActivityCounts(String volunteerId) async {
+    int arrivals = 0;
+    int events = 0;
+    try {
+      arrivals = await _supabaseService.client
+          .from('arrival_checkins')
+          .count(CountOption.exact)
+          .eq('checked_in_by', volunteerId);
+    } catch (_) {}
+    try {
+      events = await _supabaseService.client
+          .from('event_attendance')
+          .count(CountOption.exact)
+          .eq('marked_by', volunteerId);
+    } catch (_) {}
+    return {
+      'arrivals': arrivals,
+      'events': events,
+      'total': arrivals + events,
+    };
+  }
+
+  /// Returns registered participants roster for a specific event with arrival & attendance status.
+  Future<List<Map<String, dynamic>>> getEventRoster(String eventId) async {
+    final eId = await resolveEventId(eventId) ?? (isUuid(eventId) ? eventId : null);
+    if (eId == null) return [];
+
+    try {
+      final registrations = await _supabaseService.client
+          .from('registrations')
+          .select('id, status, registered_at, participant_id, participants(*)')
+          .eq('event_id', eId)
+          .order('registered_at', ascending: true);
+
+      return List<Map<String, dynamic>>.from(registrations);
+    } catch (_) {
+      return [];
+    }
+  }
 }
+

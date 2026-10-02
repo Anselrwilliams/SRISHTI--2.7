@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../auth/models/volunteer_model.dart';
 import '../../events/screens/events_screen.dart';
 import '../../home/screens/home_screen.dart';
 import '../../profile/screens/profile_screen.dart';
 import '../../scanner/screens/scan_screen.dart';
 
-/// Main Dashboard container managing tabs and prominent Scan QR navigation.
+/// Main Dashboard container managing tabs and prominent Scan QR navigation for general volunteers.
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  final VolunteerModel? volunteer;
+
+  const DashboardScreen({
+    super.key,
+    this.volunteer,
+  });
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -17,6 +23,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
 
   void _navigateToTab(int index) {
+    if (_currentIndex == index && index == 1) {
+      ScanScreen.resumeActiveScanner();
+      return;
+    }
     setState(() => _currentIndex = index);
   }
 
@@ -24,10 +34,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final List<Widget> screens = [
       HomeScreen(
+        volunteer: widget.volunteer,
         onScanPressed: () => _navigateToTab(1),
         onEventsPressed: () => _navigateToTab(2),
       ),
       ScanScreen(
+        isActive: _currentIndex == 1,
         onScanComplete: () {
           // Can refresh stats
         },
@@ -35,7 +47,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       EventsScreen(
         onNavigateToScan: () => _navigateToTab(1),
       ),
-      const ProfileScreen(),
+      ProfileScreen(volunteer: widget.volunteer),
     ];
 
     return Scaffold(

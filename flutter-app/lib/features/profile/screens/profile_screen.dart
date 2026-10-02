@@ -1,29 +1,92 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/supabase_service.dart';
+import '../../auth/models/volunteer_model.dart';
+import '../../checkin/services/checkin_service.dart';
 import '../../history/screens/history_screen.dart';
+import '../../scanner/services/qr_camera_manager.dart';
 
 /// Volunteer profile and session management screen.
+/// Displays authentic volunteer metadata and dynamic scan statistics from Supabase.
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final VolunteerModel? volunteer;
+
+  const ProfileScreen({
+    super.key,
+    this.volunteer,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  final CheckinService _checkinService = CheckinService();
+  VolunteerModel? _volunteer;
+  bool _isLoadingProfile = false;
   bool _isLoggingOut = false;
+
+  int _totalScans = 0;
+  int _arrivalsScans = 0;
+  int _eventsScans = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _volunteer = widget.volunteer;
+    _initializeData();
+  }
+
+  Future<void> _initializeData() async {
+    if (_volunteer == null) {
+      setState(() => _isLoadingProfile = true);
+      try {
+        final profile = await SupabaseService.instance.getCurrentVolunteerProfile();
+        if (profile != null) {
+          _volunteer = VolunteerModel.fromMap(
+            profile,
+            email: SupabaseService.instance.currentUserEmail,
+          );
+        }
+      } catch (_) {}
+      if (mounted) {
+        setState(() => _isLoadingProfile = false);
+      }
+    }
+
+    if (_volunteer != null) {
+      _loadPersonalMetrics();
+    }
+  }
+
+  Future<void> _loadPersonalMetrics() async {
+    if (_volunteer == null) return;
+    try {
+      final counts = await _checkinService.getVolunteerActivityCounts(_volunteer!.id);
+      if (!mounted) return;
+      setState(() {
+        _arrivalsScans = counts['arrivals'] ?? 0;
+        _eventsScans = counts['events'] ?? 0;
+        _totalScans = counts['total'] ?? 0;
+      });
+    } catch (_) {}
+  }
 
   Future<void> _handleLogout() async {
     final shouldLogout = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Sign Out'),
-        content: const Text('Are you sure you want to log out from the volunteer portal?'),
+        backgroundColor: AppColors.surfaceDarkCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Sign Out', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Are you sure you want to log out from the volunteer portal?',
+          style: TextStyle(color: AppColors.textDarkSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.cyan)),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -41,6 +104,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _isLoggingOut = true);
 
     try {
+      await QrCameraManager.instance.stopAndDispose();
       await SupabaseService.instance.signOut();
     } catch (e) {
       if (!mounted) return;
@@ -59,20 +123,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = SupabaseService.instance.currentUser;
-    final email = user?.email ?? 'volunteer@srishti.org';
-    final name = email.split('@').first.replaceAll('.', ' ').toUpperCase();
+    if (_isLoadingProfile) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    final displayName = _volunteer?.name ?? 'Volunteer';
+    final username = _volunteer?.username.isNotEmpty == true
+        ? '@${_volunteer!.username}'
+        : (SupabaseService.instance.currentUserEmail ?? 'authorized');
+    final roleDisplay = _volunteer?.roleDisplay ?? 'Volunteer';
+    final roleColor = _volunteer?.roleColor ?? AppColors.electricBlue;
+    final roleIcon = _volunteer?.roleIcon ?? Icons.badge_rounded;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Volunteer Profile'),
+        title: const Text('Profile'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            // Avatar Card
+            // Avatar & Identity Card
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
@@ -88,9 +165,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     width: 76,
                     height: 76,
                     padding: const EdgeInsets.all(3),
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: AppColors.primaryGradient,
+                      gradient: LinearGradient(
+                        colors: [roleColor, AppColors.electricBlue],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                     ),
                     child: Container(
                       decoration: const BoxDecoration(
@@ -99,7 +180,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       child: Center(
                         child: Text(
-                          name.isNotEmpty ? name.substring(0, 1) : 'V',
+                          displayName.isNotEmpty ? displayName.substring(0, 1).toUpperCase() : 'V',
                           style: const TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.w800,
@@ -111,41 +192,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    name,
+                    displayName,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
                       color: AppColors.textPrimary,
-                      letterSpacing: -0.2,
+                      letterSpacing: -0.3,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    email,
+                    username,
                     style: const TextStyle(
                       fontSize: 13,
                       color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                   const SizedBox(height: 14),
+
+                  // Role Badge
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                     decoration: BoxDecoration(
-                      color: AppColors.cyan.withAlpha(25),
+                      color: roleColor.withAlpha(25),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppColors.cyan.withAlpha(80)),
+                      border: Border.all(color: roleColor.withAlpha(90)),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.shield_outlined, size: 14, color: AppColors.electricBlue),
-                        SizedBox(width: 6),
+                        Icon(roleIcon, size: 15, color: roleColor),
+                        const SizedBox(width: 6),
                         Text(
-                          'SRISHTI 2.7 Volunteer',
+                          roleDisplay,
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.electricBlue,
+                            fontWeight: FontWeight.w700,
+                            color: roleColor,
                           ),
                         ),
                       ],
@@ -156,9 +241,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Volunteer Metrics Summary
+            // Personal Scans Metrics Summary
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               decoration: BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(20),
@@ -168,17 +253,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildMetricItem('Today\'s Scans', '42'),
-                  Container(height: 30, width: 1, color: AppColors.borderLight),
-                  _buildMetricItem('Arrivals', '29'),
-                  Container(height: 30, width: 1, color: AppColors.borderLight),
-                  _buildMetricItem('Events', '13'),
+                  _buildMetricItem('My Scans', '$_totalScans'),
+                  Container(height: 32, width: 1, color: AppColors.borderLight),
+                  _buildMetricItem('Arrivals', '$_arrivalsScans'),
+                  Container(height: 32, width: 1, color: AppColors.borderLight),
+                  _buildMetricItem('Events', '$_eventsScans'),
                 ],
               ),
             ),
             const SizedBox(height: 20),
 
-            // Actions & Activity Links
+            // Navigation Links
             Container(
               decoration: BoxDecoration(
                 color: AppColors.surface,
@@ -186,34 +271,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 border: Border.all(color: AppColors.border),
                 boxShadow: AppColors.softShadow,
               ),
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.history_rounded, color: AppColors.textPrimary),
-                    title: const Text('Activity History', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    subtitle: const Text('View your recent scans and check-ins', style: TextStyle(fontSize: 12)),
-                    trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (context) => const HistoryScreen()),
-                      );
-                    },
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.cloud_done_outlined, color: AppColors.success),
-                    title: const Text('Supabase Connection', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    subtitle: const Text('Connected with Row Level Security', style: TextStyle(fontSize: 12)),
-                    trailing: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: AppColors.success,
-                        shape: BoxShape.circle,
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.history_rounded, color: AppColors.textPrimary),
+                      title: const Text('Activity History', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      subtitle: const Text('View recent scans and check-in timeline', style: TextStyle(fontSize: 12)),
+                      trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (context) => const HistoryScreen()),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.security_rounded, color: AppColors.electricBlue),
+                      title: const Text('Access Permissions', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      subtitle: Text('Role: ${_volunteer?.role ?? 'volunteer'}', style: const TextStyle(fontSize: 12)),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withAlpha(20),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'Active',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.success,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 32),
@@ -253,12 +350,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         Text(
           value,
           style: const TextStyle(
-            fontSize: 20,
+            fontSize: 22,
             fontWeight: FontWeight.w800,
             color: AppColors.textPrimary,
           ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 3),
         Text(
           label,
           style: const TextStyle(

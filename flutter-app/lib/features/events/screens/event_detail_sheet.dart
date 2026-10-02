@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/time_formatter.dart';
 import '../../../core/widgets/app_status_badge.dart';
 import '../../../core/widgets/gradient_button.dart';
 import '../../checkin/models/attendance_mode.dart';
@@ -123,7 +124,12 @@ class EventDetailSheet extends StatelessWidget {
                 const Divider(height: 16),
                 _buildInfoRow('Date', event.date ?? 'Day 1'),
                 const Divider(height: 16),
-                _buildInfoRow('Scheduled Time', event.time ?? '10:00 AM'),
+                _buildInfoRow(
+                  'Scheduled Time',
+                  TimeFormatter.formatTimeOrRange(event.time).isNotEmpty
+                      ? TimeFormatter.formatTimeOrRange(event.time)
+                      : (event.time ?? '10:00 AM'),
+                ),
                 const Divider(height: 16),
                 _buildInfoRow('Registered Count', '${event.registrationCount} Participants'),
                 const Divider(height: 16),

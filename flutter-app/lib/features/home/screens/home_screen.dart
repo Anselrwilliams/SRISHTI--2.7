@@ -4,6 +4,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/srishti_logo.dart';
 import '../../../core/widgets/stat_card.dart';
+import '../../auth/models/volunteer_model.dart';
 import '../../checkin/models/attendance_mode.dart';
 import '../../checkin/services/checkin_service.dart';
 import '../../events/models/event_model.dart';
@@ -18,11 +19,13 @@ import '../../participants/screens/participant_search_screen.dart';
 class HomeScreen extends StatefulWidget {
   final VoidCallback onScanPressed;
   final VoidCallback onEventsPressed;
+  final VolunteerModel? volunteer;
 
   const HomeScreen({
     super.key,
     required this.onScanPressed,
     required this.onEventsPressed,
+    this.volunteer,
   });
 
   @override
@@ -38,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen>
   int _todayCheckinsCount = 0;
   int _todayAttendanceCount = 0;
   List<ActivityItem> _recentActivities = [];
+  EventModel? _featuredEvent;
 
   @override
   void initState() {
@@ -66,11 +70,25 @@ class _HomeScreenState extends State<HomeScreen>
       final attendance = await _checkinService.getTodayEventAttendanceCount();
       final activities = await _checkinService.getRecentActivities(limit: 3);
 
+      EventModel? featured;
+      try {
+        final events = await _checkinService.getActiveEvents();
+        if (events.isNotEmpty) {
+          final first = EventModel.fromMap(events.first);
+          final counts = await _checkinService.getEventCounts(first.id);
+          featured = first.copyWith(
+            registrationCount: counts['registered'] ?? 0,
+            attendanceCount: counts['attended'] ?? 0,
+          );
+        }
+      } catch (_) {}
+
       if (!mounted) return;
       setState(() {
         _todayCheckinsCount = arrivals;
         _todayAttendanceCount = attendance;
         _recentActivities = activities;
+        _featuredEvent = featured;
       });
     } catch (_) {}
   }
@@ -91,11 +109,9 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    final userEmail = SupabaseService.instance.currentUserEmail ?? 'Volunteer';
-    final volunteerName = userEmail.split('@').first.split('.').first;
-    final capitalizedName = volunteerName.isNotEmpty
-        ? volunteerName[0].toUpperCase() + volunteerName.substring(1)
-        : 'Volunteer';
+    final displayName = widget.volunteer?.name.isNotEmpty == true
+        ? widget.volunteer!.name
+        : (SupabaseService.instance.currentUserEmail?.split('@').first ?? 'Volunteer');
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -127,7 +143,7 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${_getGreeting()}, $capitalizedName',
+                          '${_getGreeting()}, $displayName',
                           style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w800,
@@ -321,38 +337,32 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
                 const SizedBox(height: 8),
 
-                EventCard(
-                  event: const EventModel(
-                    id: 'TEST-EV-01',
-                    eventCode: 'TEST-EV-01',
-                    name: 'Code Sprint (Speed Coding)',
-                    category: 'Coding',
-                    venue: 'CS Lab 3',
-                    date: 'Day 1',
-                    time: '10:30 AM',
-                    registrationCount: 64,
-                    attendanceCount: 42,
-                    status: 'Live',
-                  ),
-                  onTap: () {
-                    EventDetailSheet.show(
-                      context,
-                      event: const EventModel(
-                        id: 'TEST-EV-01',
-                        eventCode: 'TEST-EV-01',
-                        name: 'Code Sprint (Speed Coding)',
-                        category: 'Coding',
-                        venue: 'CS Lab 3',
-                        date: 'Day 1',
-                        time: '10:30 AM',
-                        registrationCount: 64,
-                        attendanceCount: 42,
-                        status: 'Live',
+                if (_featuredEvent != null)
+                  EventCard(
+                    event: _featuredEvent!,
+                    onTap: () {
+                      EventDetailSheet.show(
+                        context,
+                        event: _featuredEvent!,
+                        onAttendanceMarked: _loadRealStats,
+                      );
+                    },
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'No events currently active or scheduled.',
+                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                       ),
-                      onAttendanceMarked: _loadRealStats,
-                    );
-                  },
-                ),
+                    ),
+                  ),
                 const SizedBox(height: 24),
 
                 // Recent Scans Section with Real Data
