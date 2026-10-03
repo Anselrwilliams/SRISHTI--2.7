@@ -12,6 +12,7 @@ import '../../participants/screens/participant_search_screen.dart';
 import '../../participants/services/participant_service.dart';
 import '../../profile/screens/profile_screen.dart';
 import '../../scanner/screens/scan_screen.dart';
+import 'spot_registration_screen.dart';
 
 /// Registration-focused dashboard for gate volunteers.
 /// Focuses purely on Festival Arrival Check-ins with real Supabase metrics.
@@ -212,6 +213,23 @@ class _RegistrationDashboardScreenState
                     title: 'FEST CHECK-IN',
                     subtitle: 'Festival gate verification',
                     onTap: () => _navigateToTab(1),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Spot Registration Action Card (Registration Coordinator)
+                  UnifiedPrimaryActionCard(
+                    title: 'SPOT REGISTRATION',
+                    subtitle: 'On-spot participant registration & pass',
+                    icon: Icons.person_add_alt_1_rounded,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => SpotRegistrationScreen(
+                            volunteer: widget.volunteer,
+                          ),
+                        ),
+                      ).then((_) => _loadArrivalStats());
+                    },
                   ),
                   const SizedBox(height: 18),
 

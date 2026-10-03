@@ -15,6 +15,9 @@ class EventModel {
   final int registrationCount;
   final int attendanceCount;
   final String status;
+  final String registrationType;
+  final int? maxTeamSize;
+  final double? registrationFee;
 
   const EventModel({
     required this.id,
@@ -30,7 +33,14 @@ class EventModel {
     this.registrationCount = 0,
     this.attendanceCount = 0,
     this.status = 'Upcoming',
+    this.registrationType = 'individual',
+    this.maxTeamSize,
+    this.registrationFee,
   });
+
+  bool get isTeamEvent => registrationType.trim().toLowerCase() == 'team';
+  bool get isIndividualEvent => !isTeamEvent;
+  int get effectiveMaxTeamSize => maxTeamSize ?? (isTeamEvent ? 4 : 1);
 
   factory EventModel.fromMap(Map<String, dynamic> map) {
     final rawStart = map['start_time']?.toString();
@@ -48,6 +58,17 @@ class EventModel {
       fallback: map['time']?.toString() ?? '10:00 AM',
     );
 
+    final rawRegType = map['registration_type']?.toString().toLowerCase() ??
+        map['reg_type']?.toString().toLowerCase() ??
+        'individual';
+
+    final parsedMaxTeam = int.tryParse(map['max_team_size']?.toString() ?? '') ??
+        int.tryParse(map['team_size']?.toString() ?? '');
+
+    final parsedFee = double.tryParse(map['registration_fee']?.toString() ?? '') ??
+        double.tryParse(map['fee']?.toString() ?? '') ??
+        double.tryParse(map['amount']?.toString() ?? '');
+
     return EventModel(
       id: map['id']?.toString() ?? '',
       eventCode: map['event_code']?.toString() ?? '',
@@ -62,6 +83,9 @@ class EventModel {
       registrationCount: int.tryParse(map['registrations_count']?.toString() ?? '0') ?? 0,
       attendanceCount: int.tryParse(map['attendance_count']?.toString() ?? '0') ?? 0,
       status: map['status']?.toString() ?? 'Upcoming',
+      registrationType: rawRegType,
+      maxTeamSize: parsedMaxTeam,
+      registrationFee: parsedFee,
     );
   }
 
@@ -79,6 +103,9 @@ class EventModel {
     int? registrationCount,
     int? attendanceCount,
     String? status,
+    String? registrationType,
+    int? maxTeamSize,
+    double? registrationFee,
   }) {
     return EventModel(
       id: id ?? this.id,
@@ -94,6 +121,9 @@ class EventModel {
       registrationCount: registrationCount ?? this.registrationCount,
       attendanceCount: attendanceCount ?? this.attendanceCount,
       status: status ?? this.status,
+      registrationType: registrationType ?? this.registrationType,
+      maxTeamSize: maxTeamSize ?? this.maxTeamSize,
+      registrationFee: registrationFee ?? this.registrationFee,
     );
   }
 }
