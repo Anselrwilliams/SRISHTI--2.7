@@ -13,6 +13,8 @@ import 'features/event_staff/screens/event_staff_dashboard_screen.dart';
 import 'features/registration/screens/registration_dashboard_screen.dart';
 import 'core/navigation/route_observer.dart';
 import 'features/scanner/services/qr_camera_manager.dart';
+import 'core/widgets/app_update_dialog.dart';
+import 'services/app_update_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -78,6 +80,8 @@ class RoleGate extends StatefulWidget {
 
 class _RoleGateState extends State<RoleGate> {
   late Future<Map<String, dynamic>?> _profileFuture;
+  static bool _updateDialogShown = false;
+  static bool _updateCheckInProgress = false;
 
   @override
   void initState() {
@@ -88,7 +92,44 @@ class _RoleGateState extends State<RoleGate> {
   void _loadProfile() {
     _profileFuture =
         SupabaseService.instance.getCurrentVolunteerProfile();
+
+    _checkForUpdate();
   }
+
+  Future<void> _checkForUpdate() async {
+    if (_updateDialogShown || _updateCheckInProgress) return;
+    _updateCheckInProgress = true;
+
+    try {
+      final updateFuture = AppUpdateService.checkForUpdate();
+      final profile = await _profileFuture;
+      if (!mounted || profile == null) {
+        _updateCheckInProgress = false;
+        return;
+      }
+
+      final update = await updateFuture;
+      if (!mounted || update == null) {
+        _updateCheckInProgress = false;
+        return;
+      }
+
+      if (_updateDialogShown) {
+        _updateCheckInProgress = false;
+        return;
+      }
+      _updateDialogShown = true;
+      _updateCheckInProgress = false;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        AppUpdateDialog.show(context, update);
+      });
+    } catch (_) {
+      _updateCheckInProgress = false;
+    }
+  }
+  
 
   @override
   Widget build(BuildContext context) {
