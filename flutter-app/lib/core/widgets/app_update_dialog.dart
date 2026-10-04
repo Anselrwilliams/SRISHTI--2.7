@@ -7,18 +7,27 @@ import '../../services/app_update_service.dart';
 /// Compact, modern AlertDialog informing the user about an available update.
 class AppUpdateDialog extends StatelessWidget {
   final AppUpdateInfo update;
+  final Future<bool> Function(Uri uri, LaunchMode mode)? launchUrlHandler;
 
   const AppUpdateDialog({
     super.key,
     required this.update,
+    @visibleForTesting this.launchUrlHandler,
   });
 
   /// Displays the update dialog modally.
-  static Future<void> show(BuildContext context, AppUpdateInfo update) {
+  static Future<void> show(
+    BuildContext context,
+    AppUpdateInfo update, {
+    @visibleForTesting Future<bool> Function(Uri uri, LaunchMode mode)? launchUrlHandler,
+  }) {
     return showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AppUpdateDialog(update: update),
+      builder: (context) => AppUpdateDialog(
+        update: update,
+        launchUrlHandler: launchUrlHandler,
+      ),
     );
   }
 
@@ -114,10 +123,46 @@ class AppUpdateDialog extends StatelessWidget {
         FilledButton(
           onPressed: () async {
             final uri = Uri.tryParse(update.downloadUrl);
-            if (uri != null && await canLaunchUrl(uri)) {
-              await launchUrl(
-                uri,
-                mode: LaunchMode.externalApplication,
+            if (uri == null) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Invalid update download link.'),
+                  ),
+                );
+              }
+              return;
+            }
+
+            Future<bool> performLaunch(LaunchMode mode) async {
+              if (launchUrlHandler != null) {
+                return await launchUrlHandler!(uri, mode);
+              }
+              return await launchUrl(uri, mode: mode);
+            }
+
+            bool launched = false;
+            try {
+              launched = await performLaunch(LaunchMode.externalApplication);
+            } catch (_) {
+              launched = false;
+            }
+
+            if (!launched) {
+              try {
+                launched = await performLaunch(LaunchMode.platformDefault);
+              } catch (_) {
+                launched = false;
+              }
+            }
+
+            if (!launched && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Unable to open the download link. Please check your browser or network settings.',
+                  ),
+                ),
               );
             }
           },
