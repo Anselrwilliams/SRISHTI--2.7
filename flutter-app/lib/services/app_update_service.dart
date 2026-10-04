@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 
 class AppUpdateInfo {
   final String version;
@@ -18,10 +19,11 @@ class AppUpdateService {
   static const String _latestReleaseUrl =
       'https://api.github.com/repos/Anselrwilliams/SRISHTI--2.7/releases/latest';
 
-  static const String currentVersion = '1.0.1';
-
   static Future<AppUpdateInfo?> checkForUpdate() async {
     try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
+
       final response = await http.get(
         Uri.parse(_latestReleaseUrl),
         headers: const {
