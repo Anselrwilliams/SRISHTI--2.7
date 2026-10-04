@@ -18,7 +18,7 @@ class AppUpdateService {
   static const String _latestReleaseUrl =
       'https://api.github.com/repos/Anselrwilliams/SRISHTI--2.7/releases/latest';
 
-  static const String currentVersion = '1.0.0';
+  static const String currentVersion = '1.0.1';
 
   static Future<AppUpdateInfo?> checkForUpdate() async {
     try {
