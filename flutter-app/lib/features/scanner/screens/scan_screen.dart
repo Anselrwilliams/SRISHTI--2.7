@@ -10,6 +10,7 @@ import '../../participants/services/participant_service.dart';
 import '../../../core/navigation/route_observer.dart';
 import '../services/qr_camera_manager.dart';
 import '../widgets/scan_overlay.dart';
+import '../../../core/services/haptic_feedback_service.dart';
 
 /// Technology-focused scanner screen supporting both:
 /// 1. Festival Arrival Check-in (Main Gate)
@@ -257,6 +258,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver, Ro
         // Validation State: Participant not found - stop camera while showing dialog
         await _stopCamera();
         _hasScannedOnce = true;
+        await HapticFeedbackService.instance.error();
         if (!mounted) return;
         final rescan = await _showInvalidCodeDialog(rawValue);
         if (rescan == true && mounted && widget.isActive) {
@@ -269,6 +271,15 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver, Ro
         );
 
         if (!mounted) return;
+
+        // Trigger haptic feedback based on scan result:
+        // Duplicate pattern if already arrived in arrival mode; otherwise standard success impact
+        final isDuplicateArrival = widget.mode == AttendanceMode.arrival && checkinData != null;
+        if (isDuplicateArrival) {
+          await HapticFeedbackService.instance.duplicate();
+        } else {
+          await HapticFeedbackService.instance.success();
+        }
 
         final participant = ParticipantModel.fromMap(
           participantData,
@@ -303,6 +314,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver, Ro
       if (!mounted) return;
       await _stopCamera();
       _hasScannedOnce = true;
+      await HapticFeedbackService.instance.error();
       if (!mounted) return;
       await _showErrorDialog(e.toString());
     } finally {

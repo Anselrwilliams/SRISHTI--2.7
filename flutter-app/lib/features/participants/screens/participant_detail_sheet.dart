@@ -7,6 +7,7 @@ import '../../checkin/services/checkin_service.dart';
 import '../../events/models/event_model.dart';
 import '../models/participant_model.dart';
 import '../services/participant_service.dart';
+import '../../../core/services/haptic_feedback_service.dart';
 
 /// Modal sheet displaying participant details with real two-stage verification
 /// for both Festival Arrival and Event Attendance workflows.
@@ -202,6 +203,7 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
       if (!mounted) return;
 
       if (result.isSuccess) {
+        await HapticFeedbackService.instance.success();
         setState(() {
           _hasArrived = true;
           _arrivedAt = result.recordedAt ?? DateTime.now();
@@ -209,18 +211,21 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
         });
         widget.onActionSuccess?.call();
       } else if (result.isDuplicate) {
+        await HapticFeedbackService.instance.duplicate();
         setState(() {
           _hasArrived = true;
           _arrivedAt = result.recordedAt ?? _arrivedAt;
           _warningMessage = 'Already checked in';
         });
       } else {
+        await HapticFeedbackService.instance.error();
         setState(() {
           _errorMessage = result.message;
         });
       }
     } catch (e) {
       if (!mounted) return;
+      await HapticFeedbackService.instance.error();
       setState(() => _errorMessage = 'Network error: $e');
     } finally {
       if (mounted) {
@@ -255,6 +260,7 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
       if (!mounted) return;
 
       if (result.isSuccess) {
+        await HapticFeedbackService.instance.success();
         setState(() {
           _hasAttendedEvent = true;
           _eventAttendedAt = result.recordedAt ?? DateTime.now();
@@ -262,17 +268,20 @@ class _ParticipantDetailSheetState extends State<ParticipantDetailSheet> {
         });
         widget.onActionSuccess?.call();
       } else if (result.isDuplicate) {
+        await HapticFeedbackService.instance.duplicate();
         setState(() {
           _hasAttendedEvent = true;
           _warningMessage = 'Already marked present';
         });
       } else {
+        await HapticFeedbackService.instance.error();
         setState(() {
           _errorMessage = result.message;
         });
       }
     } catch (e) {
       if (!mounted) return;
+      await HapticFeedbackService.instance.error();
       setState(() => _errorMessage = 'Network error: $e');
     } finally {
       if (mounted) {
