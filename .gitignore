@@ -13,8 +13,8 @@ flutter-app/android/.gradle/
 flutter-app/android/local.properties
 flutter-app/ios/Pods/
 
-# Secrets (uncomment if your keys are in this file)
-# flutter-app/lib/core/constants/supabase_config.dart
-.env
+# Secrets and environment
+.env*
 *.jks
 *.keystore
+supabase/.temp/
