@@ -10,16 +10,13 @@
 
 ## 1. Purpose
 
-This document defines the technical architecture for the SRISHTI 2.7 attendance and check-in system.
+This document defines the technical architecture for the SRISHTI 2.7 fest ecosystem.
 
 The system consists of:
 
-1. A Flutter mobile application used by volunteers.
-2. A web-based admin dashboard.
-3. A shared backend and PostgreSQL database.
-4. The separate public SRISHTI registration website developed by Abhiram.
-
-The public registration website is **outside the development scope of the volunteer app and admin dashboard**, but it must integrate with the same backend/data contract.
+1. **SRISHTI Supabase Backend**: Central PostgreSQL database hosting the normalized festival schema, Supabase Auth, Row Level Security (RLS), and serverless Edge Functions.
+2. **Volunteer Flutter Mobile App** (`flutter-app`): Used on-ground by coordinators for festival arrival check-in, event attendance scanning, and spot registrations.
+3. **FEST Website & Admin Dashboard** (`https://github.com/Knightopp/TrialRun2.git` / `website`): Developed by Abhiram as the unified source of truth for both the public festival portal and the administrative command center (`/admin`).
 
 ---
 
@@ -29,110 +26,64 @@ The public registration website is **outside the development scope of the volunt
 
 ### Volunteer Flutter App
 
-The mobile application will allow authorized volunteers to:
+The mobile application allows authorized volunteers to:
 
-- Log in.
-- View their dashboard.
-- Scan participant QR codes.
+- Log in via username/password (backed by `coordinator-login` Edge Function).
+- View role-based dashboards (`admin`, `registration`, `event_staff`).
+- Scan participant QR badges (`SRI27-XXXX` format).
 - Search participants manually.
-- View participant information.
 - Perform festival arrival check-in.
-- Record event attendance.
-- Detect duplicate attendance.
-- Handle invalid QR codes.
-- View relevant event information.
-- View their own check-in/attendance activity.
-- Log out.
+- Record event attendance with duplicate prevention.
+- Execute on-ground Spot Registration via atomic `spot-register` Edge Function.
+- View recent check-in/attendance history.
 
-### Admin Dashboard
+### Admin Dashboard (Abhiram)
 
-The admin dashboard will allow authorized administrators to:
+Hosted within the official web repository (`TrialRun2` at `/admin`):
 
-- Log in.
-- View attendance statistics.
-- Search participants.
-- View participant details.
-- View registration information.
-- View festival check-ins.
-- View event attendance.
-- View volunteer activity.
-- Manage events.
-- View recent check-ins.
-- Generate/export reports.
-- Manage authorized volunteer accounts where required.
+- Authenticate via Supabase Auth (`signInWithPassword`) with active admin volunteer role validation.
+- View live festival metrics (Total Participants, Events, Arrivals, Registrations, Revenue).
+- Interactive attendance and check-in analytics graphs.
+- Festival Event management (CRUD, team/solo classification, capacity, fees).
+- Participant & Volunteer Staff management (browsing, badge preview, quick registration, role management).
+- Audit logs and database explorer.
 
-### Backend
+### Backend (Supabase PostgreSQL)
 
-The backend will:
+The backend provides:
 
-- Store participant information.
-- Store event information.
-- Store registrations.
-- Store volunteer accounts/roles.
-- Store festival arrival check-ins.
-- Store event attendance.
-- Authenticate users.
-- Authorize access.
-- Prevent duplicate records.
-- Provide data to the Flutter app and admin dashboard.
-- Protect database access through row-level security and authenticated requests.
+- 7 core production tables: `participants`, `events`, `registrations`, `volunteers`, `arrival_checkins`, `event_attendance`, `event_staff`.
+- RLS policies ensuring secure anonymous read-only access for public events, while protecting PII, check-in, and volunteer data.
+- Serverless Edge Functions: `coordinator-login`, `spot-register`, `participant-profile`, `web-register`.
+- PostgreSQL sequences and stored procedures (`participant_code_seq`, `fn_generate_participant_code`, `fn_create_spot_registration`).
 
 ---
 
-# 3. Out of Scope
+# 3. Source of Truth & Component Boundaries
 
-The following are not part of the volunteer application development:
+The official repository `https://github.com/Knightopp/TrialRun2.git` serves as the **source of truth for both the public FEST website and its admin dashboard**.
 
-- Public SRISHTI website design.
-- Public registration UI.
-- Public event promotion pages.
-- Public website animations.
-- Public website hosting implementation.
-- Public website frontend development.
-
-These are handled separately by Abhiram.
-
-The systems must still follow the integration contract described in this document.
+All clients (Mobile App, FEST Website, Admin Dashboard) communicate directly with the central **SRISHTI Supabase** backend, sharing identical data structures, sequences, and security contracts.
 
 ---
 
 # 4. High-Level Architecture
 
 ```text
-                         ┌─────────────────────────┐
-                         │   PUBLIC SRISHTI SITE   │
-                         │   Developed by Abhiram  │
-                         │                         │
-                         │ Registration + QR       │
-                         └────────────┬────────────┘
-                                      │
-                                      │ Registration Data
-                                      ▼
-                         ┌─────────────────────────┐
-                         │       SUPABASE          │
-                         │                         │
-                         │  Authentication         │
-                         │  PostgreSQL Database    │
-                         │  Row Level Security     │
-                         │  Server-side Functions  │
-                         └────────────┬────────────┘
-                                      │
-                       ┌──────────────┴──────────────┐
-                       │                             │
-                       ▼                             ▼
-             ┌───────────────────┐        ┌────────────────────┐
-             │   FLUTTER APP     │        │   ADMIN DASHBOARD  │
-             │                   │        │                    │
-             │ Volunteers        │        │ Administrators     │
-             │ QR Scanner        │        │ Reports            │
-             │ Check-in          │        │ Participants       │
-             │ Attendance        │        │ Events             │
-             └───────────────────┘        └────────────────────┘
+                    ┌──────────────────────┐
+                    │   SRISHTI Supabase   │
+                    │      PostgreSQL       │
+                    │   Auth + RLS + APIs   │
+                    └──────────┬───────────┘
+                               │
+                 ┌─────────────┼─────────────┐
+                 │             │             │
+                 ▼             ▼             ▼
+          Flutter Volunteer   FEST Website   Admin Dashboard
+               App             (Abhiram)       (Abhiram)
 ```
 
-The backend is the central source of truth.
-
-The Flutter application and admin dashboard must **not maintain separate participant databases**.
+The Supabase PostgreSQL database is the single central source of truth. All three clients operate against the same unified database instance and adhere to the normalized schema.
 
 ---
 

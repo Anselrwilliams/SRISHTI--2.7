@@ -126,7 +126,7 @@ serve(async (req: Request) => {
         }
       }
 
-      // 2. Verify email belongs to an existing participant
+      // 2. Check if email belongs to an existing participant
       const { data: pMatch, error: pError } = await admin
         .from("participants")
         .select("id, participant_code, name, email")
@@ -138,8 +138,11 @@ serve(async (req: Request) => {
         return json({ success: false, error: "Error verifying participant registration." }, 500);
       }
 
-      // Safe Generic Response to prevent participant email enumeration
-      if (!pMatch) {
+      const isRegistration = body?.purpose === "registration" || body?.context === "registration";
+      const participantName = pMatch?.name || (typeof body?.name === "string" && body.name.trim()) || "Participant";
+
+      // For profile login, safely return generic response if participant does not exist
+      if (!pMatch && !isRegistration) {
         return json({
           success: true,
           message: "If this email is registered, a 6-digit verification code has been sent."
@@ -151,7 +154,7 @@ serve(async (req: Request) => {
         await admin.auth.admin.createUser({
           email: targetEmail,
           email_confirm: true,
-          user_metadata: { name: pMatch.name }
+          user_metadata: { name: participantName }
         });
       } catch (_) {
         // User already exists in auth.users

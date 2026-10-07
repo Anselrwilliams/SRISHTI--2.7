@@ -1,0 +1,24 @@
+[functions.coordinator-login]
+verify_jwt = false
+
+[functions.spot-register]
+verify_jwt = true
+
+[functions.web-register]
+verify_jwt = false
+
+[functions.participant-profile]
+verify_jwt = false
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+double_confirm_changes = true
+secure_password_change = false
+max_frequency = "1m0s"
+otp_length = 6
+otp_expiry = 3600
+
+[auth.email.template.magic_link]
+subject = "SRISHTI 2.7 — Your Verification Code"
+content_path = "./supabase/templates/magic_link.html"
