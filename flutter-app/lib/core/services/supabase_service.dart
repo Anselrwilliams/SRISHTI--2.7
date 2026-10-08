@@ -100,6 +100,8 @@ class SupabaseService {
         throw AuthException(errorMsg ?? 'Username and password are required');
       } else if (e.status == 401) {
         throw AuthException(errorMsg ?? 'Invalid username or password');
+      } else if (e.status == 429) {
+        throw AuthException(errorMsg ?? 'Too many failed login attempts. Please try again later.');
       } else if (e.status >= 500) {
         throw const AuthException('Login service unavailable');
       } else {

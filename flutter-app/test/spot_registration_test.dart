@@ -821,6 +821,57 @@ void main() {
       expect(find.text('SRI27-8888'), findsOneWidget);
       expect(find.byType(QrImageView), findsOneWidget);
     });
+
+    test('19. Real transaction reference entered by coordinator is passed to Edge Function payload', () async {
+      Map<String, dynamic>? capturedPayload;
+      final service = _MockEdgeFunctionService(
+        (payload) async {
+          capturedPayload = payload;
+          return FunctionResponse(
+            status: 200,
+            data: {
+              'success': true,
+              'data': {
+                'participant_id': 'part-uuid-102',
+                'participant_code': 'SRI27-0106',
+                'registration_id': 'reg-uuid-202',
+                'status': 'registered',
+                'payment_status': 'verified',
+              },
+            },
+          );
+        },
+      );
+
+      const event = EventModel(
+        id: 'ev-test-1',
+        eventCode: 'TEST-01',
+        name: 'Coding Sprint',
+        category: 'Coding',
+        registrationFee: 150.0,
+      );
+      final draft = SpotRegistrationDraft(
+        fullName: 'Anoop Nair',
+        phone: '9876543299',
+        email: 'anoop@fest.org',
+        college: 'GEC Thrissur',
+        selectedEvent: event,
+        isPaymentVerified: true,
+        transactionRef: 'UPI-UTR-987654321098',
+      );
+
+      final result = await service.createSpotRegistration(
+        draft: draft,
+        volunteerId: 'vol-coord-1',
+      );
+
+      expect(result.isSuccess, isTrue);
+      expect(capturedPayload, isNotNull);
+      final paymentMap = capturedPayload!['payment'] as Map<String, dynamic>;
+      expect(paymentMap['reference'], 'UPI-UTR-987654321098');
+      expect(paymentMap['method'], 'upi');
+      expect(paymentMap['amount'], 150.0);
+    });
   });
 }
 

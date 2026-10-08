@@ -130,7 +130,9 @@ class SpotRegistrationService {
       'payment': {
         'amount': draft.effectiveAmount,
         'method': 'upi', // Default spot flow verification
-        'reference': 'UPI-VERIFIED',
+        'reference': (draft.transactionRef != null && draft.transactionRef!.trim().isNotEmpty)
+            ? draft.transactionRef!.trim()
+            : 'UPI-VERIFIED',
         'verified': draft.isPaymentVerified,
       },
     };

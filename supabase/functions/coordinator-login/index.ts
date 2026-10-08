@@ -25,6 +25,12 @@ function firstConfiguredKey(name: string, dictionaryName: string): string | null
   }
 }
 
+function getClientIp(req: Request): string {
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) return forwarded.split(",")[0].trim();
+  return req.headers.get("x-real-ip") || req.headers.get("cf-connecting-ip") || "unknown";
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
@@ -55,6 +61,44 @@ serve(async (req: Request) => {
   const admin = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  const clientIp = getClientIp(req);
+
+  // Rate Limiting: Max 5 failed login attempts in the past 60 seconds per IP
+  if (clientIp !== "unknown") {
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
+    const { count, error: countErr } = await admin
+      .from("audit_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("client_ip", clientIp)
+      .eq("action", "COORDINATOR_LOGIN_FAILED")
+      .gte("created_at", oneMinuteAgo);
+
+    if (!countErr && typeof count === "number" && count >= 5) {
+      return json({
+        success: false,
+        error: "Too many failed login attempts. Please wait a minute before trying again."
+      }, 429);
+    }
+  }
+
+  async function recordFailedAttempt() {
+    try {
+      await admin.from("audit_logs").insert({
+        action: "COORDINATOR_LOGIN_FAILED",
+        status: "FAILED",
+        user_email: identifier.includes("@") ? identifier : null,
+        client_ip: clientIp,
+        metadata: {
+          identifier_type: identifier.includes("@") ? "email" : "username",
+          timestamp: new Date().toISOString()
+        }
+      });
+    } catch (auditErr) {
+      console.warn("Notice: could not record login failure audit log:", auditErr);
+    }
+  }
+
   let volunteerQuery = admin
     .from("volunteers")
     .select("email, role, status");
@@ -72,6 +116,7 @@ serve(async (req: Request) => {
     !allowedRoles.has(String(volunteer.role).toLowerCase())
   ) {
     // Keep unknown, inactive, and unauthorized accounts indistinguishable from bad credentials.
+    await recordFailedAttempt();
     return json({ success: false, error: "Invalid username or password" }, 401);
   }
 
@@ -84,8 +129,23 @@ serve(async (req: Request) => {
   });
 
   if (error || !data.session?.refresh_token) {
+    await recordFailedAttempt();
     return json({ success: false, error: "Invalid username or password" }, 401);
   }
+
+  // Record successful login for audit trail
+  try {
+    await admin.from("audit_logs").insert({
+      action: "COORDINATOR_LOGIN_SUCCESS",
+      status: "SUCCESS",
+      user_email: volunteer.email,
+      client_ip: clientIp,
+      metadata: {
+        role: volunteer.role,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (_) {}
 
   // The Flutter client exchanges this refresh token for its normal Supabase session.
   return json({ success: true, session: { refresh_token: data.session.refresh_token } });

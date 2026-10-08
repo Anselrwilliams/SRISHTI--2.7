@@ -96,6 +96,8 @@ class _LoginScreenState extends State<LoginScreen> {
           _errorMessage = errorMsg ?? 'Username and password are required';
         } else if (e.status == 401) {
           _errorMessage = errorMsg ?? 'Invalid username or password';
+        } else if (e.status == 429) {
+          _errorMessage = errorMsg ?? 'Too many failed login attempts. Please try again later.';
         } else if (e.status >= 500) {
           _errorMessage = 'Login service unavailable';
         } else {

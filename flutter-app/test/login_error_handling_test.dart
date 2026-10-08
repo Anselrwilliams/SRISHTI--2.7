@@ -198,6 +198,38 @@ void main() {
 
       expect(find.text('Login service unavailable'), findsOneWidget);
     });
+
+    testWidgets('Rate limit failure displays "Too many failed login attempts. Please try again later."',
+        (tester) async {
+      final mockService = MockSupabaseService(
+        onSignIn: ({required username, required password}) async {
+          throw const AuthException('Too many failed login attempts. Please try again later.');
+        },
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LoginScreen(supabaseService: mockService),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byType(TextFormField).first,
+        'test_user',
+      );
+      await tester.enterText(
+        find.byType(TextFormField).last,
+        'test_pass',
+      );
+      await tester.tap(find.text('Sign In'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Too many failed login attempts. Please try again later.'),
+        findsOneWidget,
+      );
+    });
   });
 }
 
