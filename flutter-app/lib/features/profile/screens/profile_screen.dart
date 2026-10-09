@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../auth/models/volunteer_model.dart';
@@ -10,10 +11,12 @@ import '../../scanner/services/qr_camera_manager.dart';
 /// Displays authentic volunteer metadata and dynamic scan statistics from Supabase.
 class ProfileScreen extends StatefulWidget {
   final VolunteerModel? volunteer;
+  final PackageInfo? packageInfo;
 
   const ProfileScreen({
     super.key,
     this.volunteer,
+    this.packageInfo,
   });
 
   @override
@@ -30,11 +33,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _arrivalsScans = 0;
   int _eventsScans = 0;
 
+  String _appName = 'FEST Volunteer';
+  String _appVersion = '1.0.2';
+  String _buildNumber = '3';
+
   @override
   void initState() {
     super.initState();
     _volunteer = widget.volunteer;
+    _initAppInfo();
     _initializeData();
+  }
+
+  void _initAppInfo() {
+    if (widget.packageInfo != null) {
+      _applyPackageInfo(widget.packageInfo!);
+    } else {
+      _loadAppInfo();
+    }
+  }
+
+  void _applyPackageInfo(PackageInfo info) {
+    if (info.appName.isNotEmpty &&
+        info.appName.toLowerCase() != 'srishti_volunteer') {
+      _appName = info.appName;
+    }
+    if (info.version.isNotEmpty) {
+      _appVersion = info.version;
+    }
+    if (info.buildNumber.isNotEmpty) {
+      _buildNumber = info.buildNumber;
+    }
+  }
+
+  Future<void> _loadAppInfo() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        _applyPackageInfo(info);
+      });
+    } catch (_) {
+      // Gracefully fall back to defaults if platform metadata is unavailable
+    }
   }
 
   Future<void> _initializeData() async {
@@ -338,9 +379,136 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               onPressed: _isLoggingOut ? null : _handleLogout,
             ),
+            const SizedBox(height: 24),
+
+            // About this app section
+            _buildAboutSection(),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAboutSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? AppColors.surfaceDarkCard : AppColors.surface;
+    final borderColor = isDark ? AppColors.borderDark : AppColors.borderLight;
+    final titleColor = isDark ? AppColors.textDarkPrimary : AppColors.textPrimary;
+    final subtitleColor = isDark ? AppColors.textDarkSecondary : AppColors.textSecondary;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: borderColor, width: 1.2),
+        boxShadow: isDark ? const [] : AppColors.softShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.cyan.withAlpha(isDark ? 35 : 20),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.cyan.withAlpha(80),
+                    width: 1,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.info_outline_rounded,
+                  size: 15,
+                  color: AppColors.cyan,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'About this app',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: titleColor,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.blue.withAlpha(isDark ? 35 : 20),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: AppColors.blue.withAlpha(70),
+                    width: 0.8,
+                  ),
+                ),
+                child: Text(
+                  'v$_appVersion',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.blue,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '$_appName v$_appVersion (Build $_buildNumber)',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: titleColor,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Divider(
+            height: 1,
+            color: isDark ? AppColors.borderDarkSubtle : AppColors.borderLight,
+          ),
+          const SizedBox(height: 10),
+          _buildAboutRow('App name', _appName, subtitleColor, titleColor),
+          const SizedBox(height: 6),
+          _buildAboutRow('Version', 'v$_appVersion', subtitleColor, titleColor),
+          const SizedBox(height: 6),
+          _buildAboutRow('Build', _buildNumber, subtitleColor, titleColor),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAboutRow(
+    String label,
+    String value,
+    Color labelColor,
+    Color valueColor,
+  ) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: labelColor,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            color: valueColor,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 
