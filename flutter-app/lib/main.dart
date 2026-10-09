@@ -30,12 +30,15 @@ Future<void> main() async {
   runApp(const SrishtiVolunteerApp());
 }
 
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
 class SrishtiVolunteerApp extends StatelessWidget {
   const SrishtiVolunteerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: appNavigatorKey,
       title: 'SRISHTI 2.7 Volunteer',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
@@ -48,8 +51,62 @@ class SrishtiVolunteerApp extends StatelessWidget {
   }
 }
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _triggerUpdateCheck();
+    });
+  }
+
+  Future<void> _triggerUpdateCheck() async {
+    if (AppUpdateService.hasShownDialog || AppUpdateService.isCheckInProgress) {
+      return;
+    }
+    AppUpdateService.isCheckInProgress = true;
+
+    try {
+      final update = await AppUpdateService.checkForUpdate();
+      if (update == null) {
+        AppUpdateService.isCheckInProgress = false;
+        return;
+      }
+
+      if (AppUpdateService.hasShownDialog) {
+        AppUpdateService.isCheckInProgress = false;
+        return;
+      }
+
+      if (!mounted) {
+        AppUpdateService.isCheckInProgress = false;
+        return;
+      }
+
+      final navContext = appNavigatorKey.currentContext;
+      final targetContext = (navContext != null && navContext.mounted)
+          ? navContext
+          : context;
+
+      if (targetContext.mounted) {
+        AppUpdateService.hasShownDialog = true;
+        AppUpdateService.isCheckInProgress = false;
+        AppUpdateDialog.show(targetContext, update);
+      } else {
+        AppUpdateService.isCheckInProgress = false;
+      }
+    } catch (e) {
+      debugPrint('[AuthGate] Error checking for updates: $e');
+      AppUpdateService.isCheckInProgress = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,8 +137,6 @@ class RoleGate extends StatefulWidget {
 
 class _RoleGateState extends State<RoleGate> {
   late Future<Map<String, dynamic>?> _profileFuture;
-  static bool _updateDialogShown = false;
-  static bool _updateCheckInProgress = false;
 
   @override
   void initState() {
@@ -97,36 +152,37 @@ class _RoleGateState extends State<RoleGate> {
   }
 
   Future<void> _checkForUpdate() async {
-    if (_updateDialogShown || _updateCheckInProgress) return;
-    _updateCheckInProgress = true;
+    if (AppUpdateService.hasShownDialog || AppUpdateService.isCheckInProgress) {
+      return;
+    }
+    AppUpdateService.isCheckInProgress = true;
 
     try {
-      final updateFuture = AppUpdateService.checkForUpdate();
-      final profile = await _profileFuture;
-      if (!mounted || profile == null) {
-        _updateCheckInProgress = false;
-        return;
-      }
-
-      final update = await updateFuture;
+      final update = await AppUpdateService.checkForUpdate();
       if (!mounted || update == null) {
-        _updateCheckInProgress = false;
+        AppUpdateService.isCheckInProgress = false;
         return;
       }
 
-      if (_updateDialogShown) {
-        _updateCheckInProgress = false;
+      if (AppUpdateService.hasShownDialog) {
+        AppUpdateService.isCheckInProgress = false;
         return;
       }
-      _updateDialogShown = true;
-      _updateCheckInProgress = false;
+
+      AppUpdateService.hasShownDialog = true;
+      AppUpdateService.isCheckInProgress = false;
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        AppUpdateDialog.show(context, update);
+        final navContext = appNavigatorKey.currentContext;
+        final targetContext = (navContext != null && navContext.mounted)
+            ? navContext
+            : context;
+        AppUpdateDialog.show(targetContext, update);
       });
-    } catch (_) {
-      _updateCheckInProgress = false;
+    } catch (e) {
+      debugPrint('[_RoleGateState] Error checking for updates: $e');
+      AppUpdateService.isCheckInProgress = false;
     }
   }
   

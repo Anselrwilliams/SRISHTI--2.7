@@ -34,8 +34,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _eventsScans = 0;
 
   String _appName = 'FEST Volunteer';
-  String _appVersion = '1.0.2';
-  String _buildNumber = '3';
+  String _appVersion = '1.0.3';
+  String _buildNumber = '4';
 
   @override
   void initState() {
