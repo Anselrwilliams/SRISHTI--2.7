@@ -1,6 +1,36 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/supabase_service.dart';
+import '../../../core/utils/time_formatter.dart';
 import '../../history/models/activity_item.dart';
+
+/// Festival arrival metrics representing registered, arrived, and pending counts.
+class FestivalStats {
+  final int registered;
+  final int arrived;
+  final int pendingArrival;
+
+  const FestivalStats({
+    required this.registered,
+    required this.arrived,
+    required this.pendingArrival,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FestivalStats &&
+          runtimeType == other.runtimeType &&
+          registered == other.registered &&
+          arrived == other.arrived &&
+          pendingArrival == other.pendingArrival;
+
+  @override
+  int get hashCode => Object.hash(registered, arrived, pendingArrival);
+
+  @override
+  String toString() =>
+      'FestivalStats(registered: $registered, arrived: $arrived, pendingArrival: $pendingArrival)';
+}
 
 /// Result object for arrival check-in and event attendance operations.
 class AttendanceActionResult {
@@ -283,7 +313,7 @@ class CheckinService {
           .single();
 
       final checkinTime = response['checked_in_at'] != null
-          ? DateTime.tryParse(response['checked_in_at'].toString())
+          ? TimeFormatter.parseToLocal(response['checked_in_at']) ?? DateTime.now()
           : DateTime.now();
 
       return AttendanceActionResult.success(
@@ -491,7 +521,7 @@ class CheckinService {
           .single();
 
       final markedTime = response['marked_at'] != null
-          ? DateTime.tryParse(response['marked_at'].toString())
+          ? TimeFormatter.parseToLocal(response['marked_at']) ?? DateTime.now()
           : DateTime.now();
 
       return AttendanceActionResult.success(
@@ -607,9 +637,7 @@ class CheckinService {
             participantCode: participant?['participant_code']?.toString() ?? '—',
             actionType: 'Arrival Check-in',
             source: a['source']?.toString().toUpperCase() == 'MANUAL' ? 'Manual Search' : 'QR Scan',
-            timestamp: a['checked_in_at'] != null
-                ? DateTime.tryParse(a['checked_in_at'].toString()) ?? DateTime.now()
-                : DateTime.now(),
+            timestamp: TimeFormatter.parseToLocal(a['checked_in_at']),
           ),
         );
       }
@@ -635,16 +663,19 @@ class CheckinService {
             eventName: event?['name']?.toString(),
             actionType: 'Event Attendance',
             source: att['source']?.toString().toUpperCase() == 'MANUAL' ? 'Manual Search' : 'QR Scan',
-            timestamp: att['marked_at'] != null
-                ? DateTime.tryParse(att['marked_at'].toString()) ?? DateTime.now()
-                : DateTime.now(),
+            timestamp: TimeFormatter.parseToLocal(att['marked_at']),
           ),
         );
       }
     } catch (_) {}
 
-    // Sort by timestamp descending
-    items.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    // Sort by timestamp descending with null-safety
+    items.sort((a, b) {
+      if (a.timestamp == null && b.timestamp == null) return 0;
+      if (a.timestamp == null) return 1;
+      if (b.timestamp == null) return -1;
+      return b.timestamp!.compareTo(a.timestamp!);
+    });
     if (items.length > limit) {
       return items.sublist(0, limit);
     }
@@ -725,7 +756,7 @@ class CheckinService {
     try {
       final arrivals = await _supabaseService.client
           .from('arrival_checkins')
-          .select('id, checked_in_at, source, participants(name, participant_code)')
+          .select('id, checked_in_at, source, notes, participants(name, participant_code)')
           .order('checked_in_at', ascending: false)
           .limit(limit);
 
@@ -738,9 +769,8 @@ class CheckinService {
             participantCode: participant?['participant_code']?.toString() ?? '—',
             actionType: 'Arrival Check-in',
             source: a['source']?.toString().toUpperCase() == 'MANUAL' ? 'Manual Search' : 'QR Scan',
-            timestamp: a['checked_in_at'] != null
-                ? DateTime.tryParse(a['checked_in_at'].toString()) ?? DateTime.now()
-                : DateTime.now(),
+            timestamp: TimeFormatter.parseToLocal(a['checked_in_at']),
+            gateOrVenue: a['notes']?.toString(),
           ),
         );
       }
@@ -749,26 +779,42 @@ class CheckinService {
     return items;
   }
 
+  /// Calculates festival arrival statistics from authoritative Supabase data.
+  ///
+  /// - `registered` = distinct eligible registered participants from `participants`.
+  /// - `arrived` = distinct registered participants with a valid gate check-in from `arrival_checkins`.
+  ///   (Capped at `registered` to prevent duplicate check-in records from inflating counts).
+  /// - `pendingArrival` = `registered - arrived` (>= 0).
+  ///
+  /// Throws exceptions upon database or network failure so callers can display retry states
+  /// rather than silently showing zero.
+  Future<FestivalStats> getFestivalArrivalStats() async {
+    final registered = await getTotalParticipantsCount();
+    final arrived = await getTotalArrivalsCount();
+
+    // Prevent duplicate records or edge-case anomalies from inflating arrived count beyond registered.
+    final distinctArrived = (arrived > registered) ? registered : (arrived < 0 ? 0 : arrived);
+    final pending = (registered - distinctArrived) > 0 ? (registered - distinctArrived) : 0;
+
+    return FestivalStats(
+      registered: registered,
+      arrived: distinctArrived,
+      pendingArrival: pending,
+    );
+  }
+
   /// Returns total registered participants in the system.
   Future<int> getTotalParticipantsCount() async {
-    try {
-      return await _supabaseService.client
-          .from('participants')
-          .count(CountOption.exact);
-    } catch (_) {
-      return 0;
-    }
+    return await _supabaseService.client
+        .from('participants')
+        .count(CountOption.exact);
   }
 
   /// Returns total festival arrival check-ins.
   Future<int> getTotalArrivalsCount() async {
-    try {
-      return await _supabaseService.client
-          .from('arrival_checkins')
-          .count(CountOption.exact);
-    } catch (_) {
-      return 0;
-    }
+    return await _supabaseService.client
+        .from('arrival_checkins')
+        .count(CountOption.exact);
   }
 
   /// Returns total event registrations across all events.

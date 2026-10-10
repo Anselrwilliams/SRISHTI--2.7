@@ -11,6 +11,8 @@ class UnifiedActivityCard extends StatelessWidget {
   final String statusLabel;
   final Color statusColor;
   final String timeString;
+  final String? exactTime;
+  final String? eventOrGate;
   final String? initial;
   final VoidCallback? onTap;
 
@@ -22,6 +24,8 @@ class UnifiedActivityCard extends StatelessWidget {
     this.statusLabel = 'Attended',
     this.statusColor = AppColors.success,
     required this.timeString,
+    this.exactTime,
+    this.eventOrGate,
     this.initial,
     this.onTap,
   });
@@ -33,6 +37,14 @@ class UnifiedActivityCard extends StatelessWidget {
         : (participantName.trim().isNotEmpty
             ? participantName.trim()[0].toUpperCase()
             : 'P');
+
+    final subtitleText = eventOrGate != null && eventOrGate!.isNotEmpty
+        ? (source.isNotEmpty
+            ? '$participantCode • $source • $eventOrGate'
+            : '$participantCode • $eventOrGate')
+        : (source.isNotEmpty
+            ? '$participantCode • $source'
+            : participantCode);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10.0),
@@ -85,6 +97,8 @@ class UnifiedActivityCard extends StatelessWidget {
                     children: [
                       Text(
                         participantName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
@@ -93,9 +107,9 @@ class UnifiedActivityCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        source.isNotEmpty
-                            ? '$participantCode • $source'
-                            : participantCode,
+                        subtitleText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w400,
@@ -132,12 +146,27 @@ class UnifiedActivityCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       timeString,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 11.5,
-                        fontWeight: FontWeight.w400,
+                        fontWeight: FontWeight.w500,
                         color: Color(0xFF94A3B8),
                       ),
                     ),
+                    if (exactTime != null && exactTime!.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        exactTime!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w400,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -176,44 +205,53 @@ class UnifiedActivitySection extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
-                letterSpacing: -0.3,
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                  letterSpacing: -0.3,
+                ),
               ),
             ),
             GestureDetector(
               onTap: onActionTap,
+              behavior: HitTestBehavior.opaque,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      actionLabel,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
+                constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
+                alignment: Alignment.centerRight,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        actionLabel,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.electricBlue,
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
                         color: AppColors.electricBlue,
                       ),
-                    ),
-                    const SizedBox(width: 3),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      size: 16,
-                      color: AppColors.electricBlue,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

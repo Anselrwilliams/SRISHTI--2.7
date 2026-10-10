@@ -10,45 +10,76 @@ import '../../events/models/event_model.dart';
 import '../../events/screens/event_detail_sheet.dart';
 import '../../history/models/activity_item.dart';
 import '../../history/screens/history_screen.dart';
+import '../../participants/models/participant_model.dart';
+import '../../participants/screens/participant_detail_sheet.dart';
 import '../../participants/screens/participant_search_screen.dart';
+import '../../participants/services/participant_service.dart';
 
-/// Volunteer Home Dashboard displaying greetings, real Supabase metrics,
-/// prominent Festival Arrival Scan QR hero, and live event previews.
+/// Volunteer Home Dashboard displaying greetings, authoritative Supabase metrics
+/// (Registered, Arrived, and Pending Arrival), prominent Festival Arrival Scan QR hero,
+/// and accurate Recent Arrivals with timestamps and History navigation.
 class HomeScreen extends StatefulWidget {
   final VoidCallback onScanPressed;
   final VoidCallback onEventsPressed;
   final VolunteerModel? volunteer;
+  final CheckinService? checkinService;
+  final ParticipantService? participantService;
 
   const HomeScreen({
     super.key,
     required this.onScanPressed,
     required this.onEventsPressed,
     this.volunteer,
+    this.checkinService,
+    this.participantService,
   });
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  HomeScreenState createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  final CheckinService _checkinService = CheckinService();
+class HomeScreenState extends State<HomeScreen> {
+  late final CheckinService _checkinService;
+  late final ParticipantService _participantService;
 
-  int _todayCheckinsCount = 0;
-  int _todayAttendanceCount = 0;
-  List<ActivityItem> _recentActivities = [];
+  FestivalStats? _stats;
+  List<ActivityItem> _recentArrivals = [];
   EventModel? _featuredEvent;
+  bool _isLoading = true;
+  String? _errorMessage;
+  bool _isOpeningParticipant = false;
+  int _latestRequestId = 0;
 
   @override
   void initState() {
     super.initState();
+    _checkinService = widget.checkinService ?? CheckinService();
+    _participantService = widget.participantService ?? ParticipantService();
+    _loadRealStats();
+  }
+
+  @override
+  void dispose() {
+    _latestRequestId++; // Invalidate any in-flight async requests
+    super.dispose();
+  }
+
+  /// Public reload trigger callable by parent navigator or tab transitions.
+  void reloadStats() {
     _loadRealStats();
   }
 
   Future<void> _loadRealStats() async {
+    final requestId = ++_latestRequestId;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
-      final arrivals = await _checkinService.getTodayArrivalCheckinsCount();
-      final attendance = await _checkinService.getTodayEventAttendanceCount();
-      final activities = await _checkinService.getRecentActivities(limit: 3);
+      final stats = await _checkinService.getFestivalArrivalStats();
+      final arrivals = await _checkinService.getRecentArrivals(limit: 5);
 
       EventModel? featured;
       try {
@@ -63,14 +94,70 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       } catch (_) {}
 
-      if (!mounted) return;
+      if (!mounted || requestId != _latestRequestId) return;
+
       setState(() {
-        _todayCheckinsCount = arrivals;
-        _todayAttendanceCount = attendance;
-        _recentActivities = activities;
+        _stats = stats;
+        _recentArrivals = arrivals;
         _featuredEvent = featured;
+        _isLoading = false;
+        _errorMessage = null;
       });
-    } catch (_) {}
+    } catch (e) {
+      if (!mounted || requestId != _latestRequestId) return;
+
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Unable to load live attendance metrics. Check network connection.';
+      });
+    }
+  }
+
+  Future<void> _openParticipantDetails(ActivityItem item) async {
+    if (_isOpeningParticipant) return;
+    final cleanCode = item.participantCode.trim();
+    if (cleanCode.isEmpty || cleanCode == '—') return;
+
+    setState(() => _isOpeningParticipant = true);
+
+    try {
+      final participantData =
+          await _participantService.getParticipantByCode(cleanCode);
+      if (participantData == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Participant $cleanCode not found.')),
+        );
+        return;
+      }
+
+      if (!mounted) return;
+
+      final participant = ParticipantModel.fromMap(
+        participantData,
+        isCheckedIn: true,
+        checkedInAt: item.timestamp,
+      );
+
+      await ParticipantDetailSheet.show(
+        context,
+        participant: participant,
+        mode: AttendanceMode.arrival,
+        source: item.source.toLowerCase().contains('manual') ? 'manual' : 'qr',
+        onActionSuccess: _loadRealStats,
+        participantService: _participantService,
+        checkinService: _checkinService,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to load participant details: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isOpeningParticipant = false);
+      }
+    }
   }
 
   String _getGreeting() {
@@ -85,6 +172,88 @@ class _HomeScreenState extends State<HomeScreen> {
     const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return '${weekdays[now.weekday - 1]}, ${months[now.month - 1]} ${now.day}';
+  }
+
+  Widget _buildStatisticsSection() {
+    if (_errorMessage != null && _stats == null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.errorBg,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.errorBorder),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.cloud_off_rounded, color: AppColors.error, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _errorMessage!,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.error,
+                ),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: _loadRealStats,
+              icon: const Icon(Icons.refresh_rounded, size: 16, color: AppColors.electricBlue),
+              label: const Text(
+                'Retry',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.electricBlue,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final registeredVal = _stats != null ? _stats!.registered.toString() : (_isLoading ? '...' : '—');
+    final arrivedVal = _stats != null ? _stats!.arrived.toString() : (_isLoading ? '...' : '—');
+    final pendingVal = _stats != null ? _stats!.pendingArrival.toString() : (_isLoading ? '...' : '—');
+
+    return Row(
+      children: [
+        Expanded(
+          child: UnifiedStatsCard(
+            label: 'REGISTERED',
+            value: registeredVal,
+            subtitle: 'Total participants',
+            icon: Icons.people_alt_rounded,
+            accentColor: AppColors.blue,
+            isCompact: true,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: UnifiedStatsCard(
+            label: 'ARRIVED',
+            value: arrivedVal,
+            subtitle: 'Gate verified',
+            icon: Icons.check_circle_rounded,
+            accentColor: AppColors.success,
+            isCompact: true,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: UnifiedStatsCard(
+            label: 'PENDING',
+            value: pendingVal,
+            subtitle: 'Pending arrival',
+            icon: Icons.pending_actions_rounded,
+            accentColor: const Color(0xFFF59E0B),
+            isCompact: true,
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -172,47 +341,26 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 18),
 
-                  // Unified Statistics Cards (2 compact cards)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: UnifiedStatsCard(
-                          label: 'CHECK-INS',
-                          value: '$_todayCheckinsCount',
-                          subtitle: 'FEST Arrivals',
-                          icon: Icons.how_to_reg_rounded,
-                          accentColor: AppColors.success,
-                          showWave: true,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: UnifiedStatsCard(
-                          label: 'ATTENDANCE',
-                          value: '$_todayAttendanceCount',
-                          subtitle: 'Event Scans',
-                          icon: Icons.fact_check_rounded,
-                          accentColor: AppColors.blue,
-                          showWave: true,
-                        ),
-                      ),
-                    ],
-                  ),
+                  // Unified Statistics Cards (3 compact cards: Registered, Arrived, Pending)
+                  _buildStatisticsSection(),
                   const SizedBox(height: 24),
 
-                  // Unified Activity Section
+                  // Unified Activity Section (Recent Arrivals with History action)
                   UnifiedActivitySection(
-                    title: 'Recent Activity',
+                    title: 'Recent Arrivals',
                     actionLabel: 'History',
                     onActionTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (context) => const HistoryScreen(),
+                          builder: (context) => HistoryScreen(
+                            initialFilter: 'Arrival',
+                            checkinService: _checkinService,
+                          ),
                         ),
                       ).then((_) => _loadRealStats());
                     },
-                    emptyMessage: 'No check-ins recorded yet today.',
-                    children: _recentActivities.map((act) {
+                    emptyMessage: 'No arrivals recorded yet today.',
+                    children: _recentArrivals.map((act) {
                       final isArrival = act.actionType == 'Arrival Check-in';
                       return UnifiedActivityCard(
                         participantName: act.participantName,
@@ -220,7 +368,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         source: act.source,
                         statusLabel: isArrival ? 'Arrived' : 'Attended',
                         statusColor: isArrival ? AppColors.success : AppColors.blue,
-                        timeString: _formatTimestamp(act.timestamp),
+                        timeString: TimeFormatter.formatRelativeTime(act.timestamp),
+                        exactTime: TimeFormatter.formatExactTime(act.timestamp),
+                        eventOrGate: act.gateOrVenue,
+                        onTap: () => _openParticipantDetails(act),
                       );
                     }).toList(),
                   ),
@@ -232,13 +383,5 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
-  }
-
-  String _formatTimestamp(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/time_formatter.dart';
 import '../../../core/widgets/empty_state_view.dart';
 import '../../checkin/services/checkin_service.dart';
 import '../models/activity_item.dart';
@@ -7,26 +8,39 @@ import '../models/activity_item.dart';
 /// Screen displaying chronological history of scans, arrival check-ins, and event attendance
 /// with real Supabase queries.
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  final String initialFilter;
+  final CheckinService? checkinService;
+
+  const HistoryScreen({
+    super.key,
+    this.initialFilter = 'All',
+    this.checkinService,
+  });
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  final CheckinService _checkinService = CheckinService();
-  String _selectedFilter = 'All';
+  late final CheckinService _checkinService;
+  late String _selectedFilter;
   bool _isLoading = true;
+  String? _errorMessage;
   List<ActivityItem> _activities = [];
 
   @override
   void initState() {
     super.initState();
+    _checkinService = widget.checkinService ?? CheckinService();
+    _selectedFilter = widget.initialFilter;
     _loadHistory();
   }
 
   Future<void> _loadHistory() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
     try {
       final items = await _checkinService.getRecentActivities(limit: 50);
@@ -34,10 +48,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
       setState(() {
         _activities = items;
         _isLoading = false;
+        _errorMessage = null;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Unable to load activity history. Please check your connection and try again.';
+      });
     }
   }
 
@@ -110,25 +128,64 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       valueColor: AlwaysStoppedAnimation<Color>(AppColors.electricBlue),
                     ),
                   )
-                : filteredList.isEmpty
-                    ? const EmptyStateView(
-                        icon: Icons.history_rounded,
-                        title: 'No Activity Found',
-                        description: 'No scans or check-in records recorded for this filter yet.',
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _loadHistory,
-                        color: AppColors.electricBlue,
-                        child: ListView.separated(
-                          padding: const EdgeInsets.all(16.0),
-                          itemCount: filteredList.length,
-                          separatorBuilder: (context, index) => const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final item = filteredList[index];
-                            return _buildActivityCard(item);
-                          },
+                : _errorMessage != null && _activities.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24.0),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.cloud_off_rounded,
+                                size: 48,
+                                color: AppColors.error,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                _errorMessage!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                onPressed: _loadHistory,
+                                icon: const Icon(Icons.refresh_rounded, size: 18),
+                                label: const Text('Retry'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.electricBlue,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                      )
+                    : filteredList.isEmpty
+                        ? const EmptyStateView(
+                            icon: Icons.history_rounded,
+                            title: 'No Activity Found',
+                            description: 'No scans or check-in records recorded for this filter yet.',
+                          )
+                        : RefreshIndicator(
+                            onRefresh: _loadHistory,
+                            color: AppColors.electricBlue,
+                            child: ListView.separated(
+                              padding: const EdgeInsets.all(16.0),
+                              itemCount: filteredList.length,
+                              separatorBuilder: (context, index) => const SizedBox(height: 12),
+                              itemBuilder: (context, index) {
+                                final item = filteredList[index];
+                                return _buildActivityCard(item);
+                              },
+                            ),
+                          ),
           ),
         ],
       ),
@@ -137,7 +194,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Widget _buildActivityCard(ActivityItem item) {
     final isQr = item.source == 'QR Scan';
-    final timeStr = _formatTimestamp(item.timestamp);
+    final timeStr = TimeFormatter.formatRelativeTime(item.timestamp);
+    final exactTimeStr = TimeFormatter.formatExactTime(item.timestamp);
     final isArrival = item.actionType == 'Arrival Check-in';
 
     return Container(
@@ -177,21 +235,40 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      item.participantName,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                        letterSpacing: -0.2,
+                    Expanded(
+                      child: Text(
+                        item.participantName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                          letterSpacing: -0.2,
+                        ),
                       ),
                     ),
-                    Text(
-                      timeStr,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                      ),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          timeStr,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        if (exactTimeStr.isNotEmpty && timeStr != 'Time unavailable')
+                          Text(
+                            exactTimeStr,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                 ),
@@ -212,6 +289,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       Expanded(
                         child: Text(
                           item.eventName!,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ] else if (item.gateOrVenue != null && item.gateOrVenue!.isNotEmpty) ...[
+                      const Text(' • ', style: TextStyle(color: AppColors.textMuted)),
+                      Expanded(
+                        child: Text(
+                          item.gateOrVenue!,
                           style: const TextStyle(
                             fontSize: 12,
                             color: AppColors.textSecondary,
@@ -268,13 +357,5 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ],
       ),
     );
-  }
-
-  String _formatTimestamp(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 }

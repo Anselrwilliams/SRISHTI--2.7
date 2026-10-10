@@ -112,4 +112,125 @@ void main() {
       expect(TimeFormatter.formatTime(null), equals(''));
     });
   });
+
+  group('TimeFormatter - Local Timezone & Safe Parsing Tests', () {
+    test('parseToLocal parses ISO-8601 UTC and converts to local DateTime', () {
+      final utcIso = '2026-10-10T04:30:00Z';
+      final parsed = TimeFormatter.parseToLocal(utcIso);
+      expect(parsed, isNotNull);
+      expect(parsed!.isUtc, isFalse);
+      // Verify point in time is preserved
+      expect(parsed.toUtc(), equals(DateTime.utc(2026, 10, 10, 4, 30)));
+    });
+
+    test('parseToLocal handles DateTime object input', () {
+      final dtUtc = DateTime.utc(2026, 10, 10, 12, 0);
+      final parsed = TimeFormatter.parseToLocal(dtUtc);
+      expect(parsed, isNotNull);
+      expect(parsed!.isUtc, isFalse);
+      expect(parsed.toUtc(), equals(dtUtc));
+    });
+
+    test('parseToLocal returns null for null, empty, or unparseable strings', () {
+      expect(TimeFormatter.parseToLocal(null), isNull);
+      expect(TimeFormatter.parseToLocal(''), isNull);
+      expect(TimeFormatter.parseToLocal('   '), isNull);
+      expect(TimeFormatter.parseToLocal('invalid-date'), isNull);
+    });
+  });
+
+  group('TimeFormatter - Relative Time & Dynamic Labels Tests', () {
+    final fixedNow = DateTime(2026, 10, 10, 15, 0, 0);
+
+    test('Returns "Time unavailable" fallback for null or invalid timestamps', () {
+      expect(TimeFormatter.formatRelativeTime(null, now: fixedNow), equals('Time unavailable'));
+      expect(TimeFormatter.formatRelativeTime('invalid-string', now: fixedNow), equals('Time unavailable'));
+      expect(TimeFormatter.formatRelativeTime(null, now: fixedNow, fallback: 'N/A'), equals('N/A'));
+    });
+
+    test('Returns "Just now" for arrivals within the last 60 seconds or slight future drift', () {
+      // 10 seconds ago
+      final tenSecAgo = fixedNow.subtract(const Duration(seconds: 10));
+      expect(TimeFormatter.formatRelativeTime(tenSecAgo, now: fixedNow), equals('Just now'));
+
+      // 50 seconds ago
+      final fiftySecAgo = fixedNow.subtract(const Duration(seconds: 50));
+      expect(TimeFormatter.formatRelativeTime(fiftySecAgo, now: fixedNow), equals('Just now'));
+
+      // Slight future (e.g. 15s ahead due to clock sync)
+      final future15s = fixedNow.add(const Duration(seconds: 15));
+      expect(TimeFormatter.formatRelativeTime(future15s, now: fixedNow), equals('Just now'));
+    });
+
+    test('Returns "1 min ago" and "X min ago" for arrivals under 60 minutes', () {
+      final oneMinAgo = fixedNow.subtract(const Duration(minutes: 1));
+      expect(TimeFormatter.formatRelativeTime(oneMinAgo, now: fixedNow), equals('1 min ago'));
+
+      final fiveMinAgo = fixedNow.subtract(const Duration(minutes: 5));
+      expect(TimeFormatter.formatRelativeTime(fiveMinAgo, now: fixedNow), equals('5 min ago'));
+
+      final fortyFiveMinAgo = fixedNow.subtract(const Duration(minutes: 45));
+      expect(TimeFormatter.formatRelativeTime(fortyFiveMinAgo, now: fixedNow), equals('45 min ago'));
+    });
+
+    test('Returns "1 hour ago" and "X hours ago" for arrivals on the same calendar day', () {
+      final oneHourAgo = fixedNow.subtract(const Duration(hours: 1));
+      expect(TimeFormatter.formatRelativeTime(oneHourAgo, now: fixedNow), equals('1 hour ago'));
+
+      final twoHoursAgo = fixedNow.subtract(const Duration(hours: 2));
+      expect(TimeFormatter.formatRelativeTime(twoHoursAgo, now: fixedNow), equals('2 hours ago'));
+
+      // 5 hours ago on same day
+      final fiveHoursAgo = fixedNow.subtract(const Duration(hours: 5));
+      expect(TimeFormatter.formatRelativeTime(fiveHoursAgo, now: fixedNow), equals('5 hours ago'));
+    });
+
+    test('Returns "Yesterday" for arrivals on the previous calendar day', () {
+      // Arrival yesterday at 18:00 (21 hours prior to today 15:00)
+      // This directly resolves the legacy UI "21h ago" bug: calendar yesterday correctly reports "Yesterday"
+      final yesterdayArrival = DateTime(2026, 10, 9, 18, 0, 0);
+      expect(TimeFormatter.formatRelativeTime(yesterdayArrival, now: fixedNow), equals('Yesterday'));
+
+      // Yesterday morning
+      final yesterdayMorning = DateTime(2026, 10, 9, 9, 30, 0);
+      expect(TimeFormatter.formatRelativeTime(yesterdayMorning, now: fixedNow), equals('Yesterday'));
+    });
+
+    test('Returns "d MMM" for older arrivals beyond yesterday', () {
+      final twoDaysAgo = DateTime(2026, 10, 8, 11, 0, 0);
+      expect(TimeFormatter.formatRelativeTime(twoDaysAgo, now: fixedNow), equals('8 Oct'));
+
+      final fiveDaysAgo = DateTime(2026, 10, 5, 14, 0, 0);
+      expect(TimeFormatter.formatRelativeTime(fiveDaysAgo, now: fixedNow), equals('5 Oct'));
+    });
+
+    test('formatExactTime formats local check-in time accurately', () {
+      final dt = DateTime(2026, 10, 10, 10, 30);
+      expect(TimeFormatter.formatExactTime(dt), equals('10:30 AM'));
+
+      final dtPm = DateTime(2026, 10, 10, 16, 45);
+      expect(TimeFormatter.formatExactTime(dtPm), equals('4:45 PM'));
+
+      expect(TimeFormatter.formatExactTime(null), equals(''));
+    });
+
+    test('formatCheckinDisplay formats combined relative and exact times cleanly', () {
+      final fiveMinAgo = fixedNow.subtract(const Duration(minutes: 5));
+      expect(
+        TimeFormatter.formatCheckinDisplay(fiveMinAgo, now: fixedNow),
+        equals('5 min ago • 2:55 PM'),
+      );
+
+      final yesterday = DateTime(2026, 10, 9, 16, 15);
+      expect(
+        TimeFormatter.formatCheckinDisplay(yesterday, now: fixedNow),
+        equals('Yesterday • 4:15 PM'),
+      );
+
+      expect(
+        TimeFormatter.formatCheckinDisplay(null, now: fixedNow),
+        equals('Time unavailable'),
+      );
+    });
+  });
 }

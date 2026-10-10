@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/time_formatter.dart';
 import '../../../core/widgets/floating_nav_bar.dart';
 import '../../../core/widgets/unified/unified_design_system.dart';
 import '../../auth/models/volunteer_model.dart';
@@ -41,6 +42,7 @@ class _RegistrationDashboardScreenState
   int _totalParticipants = 0;
   int _totalArrived = 0;
   int _remainingArrivals = 0;
+  String? _errorMessage;
   List<ActivityItem> _recentArrivals = [];
 
   late final CheckinService _checkinService;
@@ -56,25 +58,31 @@ class _RegistrationDashboardScreenState
   }
 
   Future<void> _loadArrivalStats() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
     try {
-      final totalP = await _checkinService.getTotalParticipantsCount();
-      final totalA = await _checkinService.getTotalArrivalsCount();
+      final stats = await _checkinService.getFestivalArrivalStats();
       final recent = await _checkinService.getRecentArrivals(limit: 15);
 
       if (!mounted) return;
 
       setState(() {
-        _totalParticipants = totalP;
-        _totalArrived = totalA;
-        _remainingArrivals = (totalP - totalA) > 0 ? (totalP - totalA) : 0;
+        _totalParticipants = stats.registered;
+        _totalArrived = stats.arrived;
+        _remainingArrivals = stats.pendingArrival;
         _recentArrivals = recent;
         _isLoading = false;
+        _errorMessage = null;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Unable to load festival arrival metrics.';
+      });
     }
   }
 
@@ -233,32 +241,81 @@ class _RegistrationDashboardScreenState
                   ),
                   const SizedBox(height: 18),
 
-                  // Unified Statistics Cards (2 compact cards matching reference)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: UnifiedStatsCard(
-                          label: 'REGISTERED',
-                          value: '$_totalParticipants',
-                          subtitle: '$_remainingArrivals pending',
-                          icon: Icons.people_alt_rounded,
-                          accentColor: AppColors.blue,
-                          showWave: true,
-                        ),
+                  // Unified Statistics Cards (3 compact cards: Registered, Arrived, Pending)
+                  if (_errorMessage != null && _totalParticipants == 0 && _totalArrived == 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.errorBg,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: AppColors.errorBorder),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: UnifiedStatsCard(
-                          label: 'ARRIVED',
-                          value: '$_totalArrived',
-                          subtitle: 'Gate checked in',
-                          icon: Icons.check_circle_rounded,
-                          accentColor: AppColors.success,
-                          showWave: true,
-                        ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.cloud_off_rounded, color: AppColors.error, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.error,
+                              ),
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: _loadArrivalStats,
+                            icon: const Icon(Icons.refresh_rounded, size: 16, color: AppColors.electricBlue),
+                            label: const Text(
+                              'Retry',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.electricBlue,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    )
+                  else
+                    Row(
+                      children: [
+                        Expanded(
+                          child: UnifiedStatsCard(
+                            label: 'REGISTERED',
+                            value: '$_totalParticipants',
+                            subtitle: 'Total participants',
+                            icon: Icons.people_alt_rounded,
+                            accentColor: AppColors.blue,
+                            isCompact: true,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: UnifiedStatsCard(
+                            label: 'ARRIVED',
+                            value: '$_totalArrived',
+                            subtitle: 'Gate checked in',
+                            icon: Icons.check_circle_rounded,
+                            accentColor: AppColors.success,
+                            isCompact: true,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: UnifiedStatsCard(
+                            label: 'PENDING',
+                            value: '$_remainingArrivals',
+                            subtitle: 'Pending arrival',
+                            icon: Icons.pending_actions_rounded,
+                            accentColor: const Color(0xFFF59E0B),
+                            isCompact: true,
+                          ),
+                        ),
+                      ],
+                    ),
                   const SizedBox(height: 24),
 
                   // Unified Activity Section
@@ -274,7 +331,9 @@ class _RegistrationDashboardScreenState
                         source: act.source,
                         statusLabel: 'Arrived',
                         statusColor: AppColors.success,
-                        timeString: _formatTimestamp(act.timestamp),
+                        timeString: TimeFormatter.formatRelativeTime(act.timestamp),
+                        exactTime: TimeFormatter.formatExactTime(act.timestamp),
+                        eventOrGate: act.gateOrVenue,
                         onTap: () => _openParticipantDetails(act),
                       );
                     }).toList(),
@@ -461,7 +520,7 @@ class _RegistrationDashboardScreenState
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    _formatTimestamp(item.timestamp),
+                    TimeFormatter.formatRelativeTime(item.timestamp),
                     style: const TextStyle(
                       fontSize: 11,
                       color: AppColors.textMuted,
@@ -481,13 +540,5 @@ class _RegistrationDashboardScreenState
         ),
       ),
     );
-  }
-
-  String _formatTimestamp(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 }

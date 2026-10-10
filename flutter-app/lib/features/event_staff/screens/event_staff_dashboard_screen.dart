@@ -385,7 +385,8 @@ class _EventStaffDashboardScreenState extends State<EventStaffDashboardScreen> {
                         source: item.source,
                         statusLabel: 'Attended',
                         statusColor: AppColors.success,
-                        timeString: _formatTimestamp(item.timestamp),
+                        timeString: TimeFormatter.formatRelativeTime(item.timestamp),
+                        exactTime: TimeFormatter.formatExactTime(item.timestamp),
                       );
                     }).toList(),
                   ),
@@ -611,13 +612,5 @@ class _EventStaffDashboardScreenState extends State<EventStaffDashboardScreen> {
         ),
       ],
     );
-  }
-
-  String _formatTimestamp(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 }

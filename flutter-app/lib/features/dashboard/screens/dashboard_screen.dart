@@ -21,6 +21,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
+  final GlobalKey<HomeScreenState> _homeKey = GlobalKey<HomeScreenState>();
 
   void _navigateToTab(int index) {
     if (_currentIndex == 1 && index != 1) {
@@ -30,6 +31,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ScanScreen.resumeActiveScanner();
       return;
     }
+    if (index == 0 && _currentIndex != 0) {
+      _homeKey.currentState?.reloadStats();
+    }
     setState(() => _currentIndex = index);
   }
 
@@ -37,6 +41,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final List<Widget> screens = [
       HomeScreen(
+        key: _homeKey,
         volunteer: widget.volunteer,
         onScanPressed: () => _navigateToTab(1),
         onEventsPressed: () => _navigateToTab(2),
@@ -44,7 +49,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ScanScreen(
         isActive: _currentIndex == 1,
         onScanComplete: () {
-          // Can refresh stats
+          _homeKey.currentState?.reloadStats();
         },
         onBackPressed: () => _navigateToTab(0),
       ),

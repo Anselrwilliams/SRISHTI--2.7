@@ -129,4 +129,116 @@ class TimeFormatter {
   static String formatTimeOrRange(String? input) {
     return formatTime(input);
   }
+
+  /// Parses any timestamp representation (DateTime, ISO-8601 String, etc.)
+  /// into the device's local timezone.
+  ///
+  /// Returns `null` if the input is null, empty, or cannot be parsed.
+  /// Preserves timezone information from the database (e.g. UTC ISO-8601) and
+  /// reliably converts it to the device's local timezone via `.toLocal()`.
+  /// Does NOT interpret naive local strings as UTC.
+  static DateTime? parseToLocal(dynamic input) {
+    if (input == null) return null;
+    if (input is DateTime) {
+      return input.toLocal();
+    }
+    if (input is String) {
+      final trimmed = input.trim();
+      if (trimmed.isEmpty) return null;
+      try {
+        final parsed = DateTime.tryParse(trimmed);
+        return parsed?.toLocal();
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /// Formats a check-in timestamp into human-friendly relative time:
+  /// - `Just now` (< 1 min, or slight future clock drift)
+  /// - `1 min ago` / `X min ago` (< 60 min)
+  /// - `1 hour ago` / `X hours ago` (on the same calendar day)
+  /// - `Yesterday` (on the previous calendar day)
+  /// - `d MMM` (e.g. `10 Oct`) for older arrivals
+  /// - `Time unavailable` if the timestamp is missing, null, or invalid.
+  static String formatRelativeTime(
+    dynamic timestamp, {
+    DateTime? now,
+    String fallback = 'Time unavailable',
+  }) {
+    final localDt = parseToLocal(timestamp);
+    if (localDt == null) return fallback;
+
+    final current = (now ?? DateTime.now()).toLocal();
+    final difference = current.difference(localDt);
+
+    // Minor future clock skew (up to 60 seconds) -> 'Just now'
+    if (difference.isNegative) {
+      if (difference.inSeconds.abs() <= 60) {
+        return 'Just now';
+      }
+      return formatDateTime(localDt);
+    }
+
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    }
+
+    if (difference.inMinutes < 60) {
+      final mins = difference.inMinutes;
+      return mins == 1 ? '1 min ago' : '$mins min ago';
+    }
+
+    final isSameDay = current.year == localDt.year &&
+        current.month == localDt.month &&
+        current.day == localDt.day;
+
+    if (isSameDay) {
+      final hours = difference.inHours;
+      return hours == 1 ? '1 hour ago' : '$hours hours ago';
+    }
+
+    // Check calendar yesterday
+    final yesterday = current.subtract(const Duration(days: 1));
+    final isYesterday = yesterday.year == localDt.year &&
+        yesterday.month == localDt.month &&
+        yesterday.day == localDt.day;
+
+    if (isYesterday) {
+      return 'Yesterday';
+    }
+
+    // Older arrivals
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return '${localDt.day} ${months[localDt.month - 1]}';
+  }
+
+  /// Formats exact local check-in time into `h:mm a` format (e.g. `10:30 AM`).
+  /// Returns empty string if the timestamp is null or invalid.
+  static String formatExactTime(dynamic timestamp) {
+    final localDt = parseToLocal(timestamp);
+    if (localDt == null) return '';
+    return formatDateTime(localDt);
+  }
+
+  /// Formats check-in display combining relative time and optional exact local time.
+  /// For instance: `Yesterday • 4:15 PM` or `5 min ago • 10:30 AM`.
+  static String formatCheckinDisplay(
+    dynamic timestamp, {
+    DateTime? now,
+    bool includeExact = true,
+  }) {
+    final relative = formatRelativeTime(timestamp, now: now);
+    if (relative == 'Time unavailable') return relative;
+    if (!includeExact) return relative;
+
+    final exact = formatExactTime(timestamp);
+    if (exact.isEmpty || relative == 'Just now') return relative;
+
+    return '$relative • $exact';
+  }
 }

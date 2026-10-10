@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/time_formatter.dart';
 import '../../../core/widgets/floating_nav_bar.dart';
 import '../../../core/widgets/unified/unified_design_system.dart';
 import '../../auth/models/volunteer_model.dart';
@@ -249,7 +250,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         source: act.eventName ?? (isArrival ? 'Campus Arrival' : 'Manual Scan'),
                         statusLabel: isArrival ? 'Arrival' : 'Attended',
                         statusColor: isArrival ? AppColors.success : AppColors.electricBlue,
-                        timeString: _formatTimestamp(act.timestamp),
+                        timeString: TimeFormatter.formatRelativeTime(act.timestamp),
+                        exactTime: TimeFormatter.formatExactTime(act.timestamp),
                       );
                     }).toList(),
                   ),
@@ -261,13 +263,5 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         ),
       ),
     );
-  }
-
-  String _formatTimestamp(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 }
