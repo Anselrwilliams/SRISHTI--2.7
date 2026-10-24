@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:srishti_volunteer/core/widgets/app_update_dialog.dart';
 import 'package:srishti_volunteer/services/app_update_service.dart';
 
@@ -286,6 +287,189 @@ void main() {
       expect(find.text('Version 1.0.3 is available.'), findsOneWidget);
       expect(find.text('Update Now'), findsOneWidget);
       expect(find.text('Later'), findsOneWidget);
+    });
+
+    test('correctly identifies v1.0.4 as available when installed version is v1.0.3+4', () async {
+      final installed = createPackageInfo('1.0.3', '4');
+
+      final releasesJson = jsonEncode([
+        {
+          'tag_name': 'v1.0.4',
+          'html_url': 'https://github.com/Anselrwilliams/SRISHTI--2.7/releases/tag/v1.0.4',
+          'draft': false,
+          'prerelease': false,
+          'assets': [
+            {
+              'name': 'FEST-Volunteer-v1.0.4-build5.apk',
+              'browser_download_url':
+                  'https://github.com/Anselrwilliams/SRISHTI--2.7/releases/download/v1.0.4/FEST-Volunteer-v1.0.4-build5.apk',
+            }
+          ],
+        },
+        {
+          'tag_name': 'v1.0.3',
+          'html_url': 'https://github.com/Anselrwilliams/SRISHTI--2.7/releases/tag/v1.0.3',
+          'draft': false,
+          'prerelease': false,
+          'assets': [
+            {
+              'name': 'FEST-Volunteer-v1.0.3-build4.apk',
+              'browser_download_url':
+                  'https://github.com/Anselrwilliams/SRISHTI--2.7/releases/download/v1.0.3/FEST-Volunteer-v1.0.3-build4.apk',
+            }
+          ],
+        },
+      ]);
+
+      final mockClient = MockClient((request) async {
+        return http.Response(releasesJson, 200, headers: {'content-type': 'application/json'});
+      });
+
+      final update = await AppUpdateService.checkForUpdate(
+        client: mockClient,
+        packageInfo: installed,
+      );
+
+      expect(update, isNotNull);
+      expect(update!.version, '1.0.4');
+      expect(
+        update.downloadUrl,
+        'https://github.com/Anselrwilliams/SRISHTI--2.7/releases/download/v1.0.4/FEST-Volunteer-v1.0.4-build5.apk',
+      );
+      expect(
+        update.releaseUrl,
+        'https://github.com/Anselrwilliams/SRISHTI--2.7/releases/tag/v1.0.4',
+      );
+    });
+
+    test('does not prompt update when already installed on v1.0.4+5', () async {
+      final installed = createPackageInfo('1.0.4', '5');
+
+      final releasesJson = jsonEncode([
+        {
+          'tag_name': 'v1.0.4',
+          'html_url': 'https://github.com/Anselrwilliams/SRISHTI--2.7/releases/tag/v1.0.4',
+          'draft': false,
+          'prerelease': false,
+          'assets': [
+            {
+              'name': 'FEST-Volunteer-v1.0.4-build5.apk',
+              'browser_download_url':
+                  'https://github.com/Anselrwilliams/SRISHTI--2.7/releases/download/v1.0.4/FEST-Volunteer-v1.0.4-build5.apk',
+            }
+          ],
+        },
+      ]);
+
+      final mockClient = MockClient((request) async {
+        return http.Response(releasesJson, 200, headers: {'content-type': 'application/json'});
+      });
+
+      final update = await AppUpdateService.checkForUpdate(
+        client: mockClient,
+        packageInfo: installed,
+      );
+
+      expect(update, isNull);
+    });
+
+    testWidgets('AppUpdateDialog: tapping Later closes the dialog without launching download',
+        (WidgetTester tester) async {
+      Uri? launchedUri;
+      const updateInfo = AppUpdateInfo(
+        version: '1.0.4',
+        downloadUrl:
+            'https://github.com/Anselrwilliams/SRISHTI--2.7/releases/download/v1.0.4/FEST-Volunteer-v1.0.4-build5.apk',
+        releaseUrl: 'https://github.com/Anselrwilliams/SRISHTI--2.7/releases/tag/v1.0.4',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              return Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () => AppUpdateDialog.show(
+                      context,
+                      updateInfo,
+                      launchUrlHandler: (uri, mode) async {
+                        launchedUri = uri;
+                        return true;
+                      },
+                    ),
+                    child: const Text('Show Dialog'),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Show Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Update Available'), findsOneWidget);
+      expect(find.text('Version 1.0.4 is available.'), findsOneWidget);
+
+      await tester.tap(find.text('Later'));
+      await tester.pumpAndSettle();
+
+      // Dialog dismissed
+      expect(find.text('Update Available'), findsNothing);
+      expect(launchedUri, isNull);
+    });
+
+    testWidgets('AppUpdateDialog: tapping Update Now invokes launchUrlHandler with externalApplication mode',
+        (WidgetTester tester) async {
+      Uri? launchedUri;
+      LaunchMode? launchModeUsed;
+
+      const updateInfo = AppUpdateInfo(
+        version: '1.0.4',
+        downloadUrl:
+            'https://github.com/Anselrwilliams/SRISHTI--2.7/releases/download/v1.0.4/FEST-Volunteer-v1.0.4-build5.apk',
+        releaseUrl: 'https://github.com/Anselrwilliams/SRISHTI--2.7/releases/tag/v1.0.4',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              return Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () => AppUpdateDialog.show(
+                      context,
+                      updateInfo,
+                      launchUrlHandler: (uri, mode) async {
+                        launchedUri = uri;
+                        launchModeUsed = mode;
+                        return true;
+                      },
+                    ),
+                    child: const Text('Show Dialog'),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Show Dialog'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Update Now'));
+      await tester.pumpAndSettle();
+
+      expect(launchedUri, isNotNull);
+      expect(
+        launchedUri.toString(),
+        'https://github.com/Anselrwilliams/SRISHTI--2.7/releases/download/v1.0.4/FEST-Volunteer-v1.0.4-build5.apk',
+      );
+      expect(launchModeUsed, LaunchMode.externalApplication);
     });
   });
 }
